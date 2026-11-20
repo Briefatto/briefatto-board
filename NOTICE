@@ -1,0 +1,11 @@
+Briefatto Board
+
+The source-level floor check runs Impeccable 4.10.0 by Paul Bakaus.
+Impeccable is Copyright 2025 Paul Bakaus and licensed under the Apache
+License, Version 2.0. https://github.com/pbakaus/impeccable
+
+The test fixture uses Work Sans, Copyright 2019 The Work Sans Project
+Authors, under the SIL Open Font License, Version 1.1.
+
+The bakery example includes CC0 photos credited in
+examples/bakery/assets/photos/LICENSES.json.

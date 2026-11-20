@@ -1,0 +1,8 @@
+# Third-party materials
+
+- **Impeccable 4.10.0 (Apache-2.0).** The floor invokes `npx -y impeccable@4.10.0 detect --json <file>` by default. `BOARD_IMPECCABLE` can select a native executable instead. The board consumes detector output and applies its own render and brief checks. The upstream distribution supplies the detector and its rules. The board's dependency manifest does not install it. Attribution is in [NOTICE](NOTICE). [npm release](https://registry.npmjs.org/impeccable/4.10.0) · [Upstream licence](https://github.com/pbakaus/impeccable/blob/main/LICENSE)
+- **Bakery photos (CC0 1.0).** The example ships three photos by Markus Spiske and Nutrition, Food Safety & Health. The [photo ledger](examples/bakery/assets/photos/LICENSES.json) records each source, creator, and licence. [CC0 legal text](https://creativecommons.org/publicdomain/zero/1.0/legalcode)
+- **Work Sans (SIL OFL 1.1).** The HTTP font validation test serves one Work Sans Latin variable WOFF2 locally. The original attribution and the full licence accompany the font. [Bundled licence](resources/fonts/OFL-WorkSans.txt) · [Upstream project](https://github.com/weiweihuanghuang/Work-Sans)
+- **Interfaces referenced by the board.** The skill references Google's DESIGN.md format, the local validator implements the board's checks, and an optional export emits configuration for the Astryx theme API. This checkout contains the integration code. [DESIGN.md format](https://github.com/google-labs-code/design.md) · [Astryx](https://astryx.atmeta.com/docs/theme)
+
+The npm runtime dependencies are Culori (MIT), Playwright (Apache-2.0), pngjs (MIT), yaml (ISC), and Zod (MIT). npm installs them with their own licences. The checkout lockfile records build tooling and transitive packages.

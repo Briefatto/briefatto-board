@@ -1,0 +1,58 @@
+{
+  "name": "briefatto-board",
+  "version": "0.1.0",
+  "description": "Versioned design guides and visual checks for coding agents.",
+  "keywords": [
+    "design-system",
+    "design-md",
+    "design-lint",
+    "coding-agents",
+    "cli"
+  ],
+  "author": "Briefatto",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Briefatto/briefatto-board.git"
+  },
+  "homepage": "https://briefatto.com",
+  "bugs": {
+    "url": "https://github.com/Briefatto/briefatto-board/issues"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "briefatto-board": "skill/briefatto-board/board.mjs"
+  },
+  "files": [
+    "dist/",
+    "!dist/**/*.test.js",
+    "skill/briefatto-board/board.mjs",
+    "skill/briefatto-board/SKILL.md",
+    "NOTICE",
+    "LICENSE",
+    "THIRD_PARTY.md",
+    "examples/"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepack": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test \"dist/board/*.test.js\""
+  },
+  "dependencies": {
+    "culori": "4.0.2",
+    "playwright": "1.64.1",
+    "pngjs": "7.0.0",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/culori": "4.0.1",
+    "@types/node": "26.6.5",
+    "@types/pngjs": "6.0.5",
+    "typescript": "7.0.2"
+  }
+}

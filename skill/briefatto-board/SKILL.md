@@ -1,0 +1,53 @@
+---
+name: briefatto-board
+description: Adopt an existing website or develop a brand from references, freeze its design into DESIGN.md, and use that guide across sessions.
+---
+
+# Design board
+
+The installer places this skill under `.claude/skills/` for Claude Code. Other coding agents read the same file via the pointer in `AGENTS.md`.
+
+If the project has a frozen `DESIGN.md`, read it before visual work and go straight to making pieces.
+
+Commands shown as `board` use `node .claude/skills/briefatto-board/board.mjs` from the project root. With the npm install, you can also use `npx briefatto-board`. If a render reports missing Playwright Chromium, run the install command it prints and retry.
+
+## Existing sites and work in progress
+
+- For a frozen board, use the current `DESIGN.md`. Check `board status` before resuming. A current piece declares the current version. A stale piece declares an older version. For an unrecorded piece, inspect its source and render, revise it against the current guide if needed, then record the version actually used. For pieces outside the board, find their intended output location and save standalone HTML pieces under `outputs/` with their assets. Record the version after checking the piece against the guide.
+- For an existing site without a frozen board, adopt its current look first. Run `board adopt .` from the project. It finds top-level HTML pages or a conventional build with an index page. Pass `--root <built-directory>` for a different build root and repeat `--page <file>` for chosen files relative to that root. For a running site, repeat `--page <url>` for the representative routes and states. Leave the site running for freeze. The default captures are desktop and mobile. Repeat `--viewport WIDTHxHEIGHT` to use other sizes.
+- Open each screenshot in `.briefatto/adoption/` and read `evidence.json` for computed styles, visible copy and candidate style files. Inspect the page source, CSS variables, Tailwind configuration, theme and logo files that the pages use. Identify which components carry the brand across routes and screen sizes.
+- Write the root `DESIGN.md` as a handoff from one designer to another. Use the DESIGN.md front matter and typography instructions below. Name each colour and type role and use exact computed values, including responsive variants visible in the captures. Describe the existing layout, spacing, navigation, common components and logo treatment by role. Take the voice and example copy from the real pages. Quote observed copy in a Voice section. The Brand facts, Campaign copy, and Client musts and must-nots sections below are for supplied briefs and confirmed client requirements. Describe only what the pages and shipped assets establish.
+- For `keep our look,` freeze with `board freeze .` once the guide is ready. For `tidy it up first,` run `board adopt . --check` on the selected pages, show the findings and proposed fixes, and wait for the user's yes. Fix the agreed issues, rerun the capture and floor check, and update the guide from the revised pages before freezing. `board freeze . --check` requires a passing floor as well as guide validation.
+- Freeze an adopted board with the same page selection for later brand changes. To change the reference pages, rerun adoption with the new selection. If the project has partial pieces and no board, adopt and freeze first, then review and record the existing pieces. If adoption has already been recorded, use the existing captures and draft to resume writing or freezing.
+
+## Brief → references → directions → client review
+
+1. Read `brief.md` and the client's materials. For a chat brief, save the client's words to `brief.md`. Preserve the brand name, offer, copy, URL, details, and literal requirements. If needed, record additional required strings, terms, or body copy in `essentials.json` using `required`, `terms`, or `body` arrays. Use only supplied facts.
+2. Search for live references and capture them with `board refs . --capture <url> example.png`, or copy in images supplied by the client. For capture, pass a bare PNG filename other than `sheet.png`. The command saves it under `refs/`. In `refs/manifest.json`, list `{"image":"example.png","source":"https://example.com/page","note":"What to look at"}` for each picture. Use a source file URL for a client image. If a picture is unavailable, a `note` entry is labelled text-only fallback. Run `board refs .`, show `refs/sheet.png`, and ask the client to point. Keep `refs/` internal to the review.
+3. Choose the places this client's audience will see the work, such as a README header, docs page and link card for a developer tool. Declare the canvases in project-root `formats.json`, an array of `{"id":"readme","label":"README header","width":1280,"height":360,"seenWidth":900,"source":"Rendered within the repository page"}` entries. With no client-specific formats, use hero 1440×900, post 1080×1080 and story 1080×1920. Use the same formats in all three directions and the kit. Set `seenWidth` to the displayed width in CSS pixels, at most `width`. The floor scales its 11 px displayed text minimum to the canvas width.
+4. Draw three distinct directions with the brief's real copy and a designed wordmark in each. Load open-licence web fonts in the samples. Under each `directions/<id>/`, save `<format>.html` for each canvas and a `direction.md` with its name, reference numbers, format choices and why, exact font load lines and CSS fallback stacks. Describe the recurring graphic device in `## Device` and mark it with `data-device` in the samples. Mark the visible device or a wrapper with its own rendered width and height. Run `board directions .` and show the sheets for a pick or changes.
+5. Record the client's words verbatim in `refs/notes.md`. Put each confirmed brand must or must-not in its own fenced `constraint` block. If none fits, agree on a direction to revise or show replacements. Apply the requests, run `board directions . <id>`, and show the revised sheet. Wait for an explicit yes to that sheet before freezing.
+
+## Freeze → make pieces → feedback
+
+6. Write the project-root `DESIGN.md` yourself after the client picks a direction. Open the chosen samples as images and read their HTML and styles. Brief the next designer on the decisions they need to make.
+   - Use the [DESIGN.md format](https://github.com/google-labs-code/design.md). Put the name and role-named `colors` and `typography` tokens in YAML front matter. Give each type role and format variant its exact computed `fontFamily` and `fontSize` in `px`. Name sizes by what they set, such as headline, price numeral, price unit, or URL. Record colors as CSS literals and explain which parts use each color.
+   - Name each recurring part by its job, then explain how it is built and how the parts sit together. Include details such as base rules, lockups and footer treatments when they carry the identity. Explain how the arrangement recomposes for different canvases. Leave out measured ratios, coverage percentages and centroid coordinates.
+   - Under `## Overview`, use `### Brand facts` for one blockquote per labeled fact paragraph, including the label as written, such as `> **Who.** ...`. Separate the quotes with blank lines. Use `### Campaign copy` for a two-column `| Role | Copy |` table with the brief's exact role labels and wording. Treat the table as copy to select for the piece and campaign. Carry other literal copy from `essentials.json` in the table if it adds wording beyond the brief's copy rows.
+   - Use `### Client musts and must-nots` and quote the brief's explicit constraints and the confirmed `constraint` blocks from `refs/notes.md` verbatim. Keep any remembered quotes from the current board. Use one Markdown blockquote per source item, separated by a blank line.
+   - Under `## Typography`, include the complete font load lines as HTML `<link rel="stylesheet" href="…">`, CSS `@import`, or `@font-face` code. Use resolvable sources. Explain the CSS fallback stacks.
+   - Make the guide sufficient on its own. Describe how to build the parts directly and refer only to assets that ship with the project. The reader may have only this file and the supplied brand assets.
+   - Run `board freeze . <id>`. Read its validation report, correct any named failures in your draft, and rerun. Freeze stamps and archives the guide. Use `board log`, `board diff v1 v2`, and `board status` for version history and piece status.
+7. Make the kit in the chosen formats from `DESIGN.md`. Recompose for each canvas and use the brand facts as recorded. Save `outputs/<format>.html` with the version used in each head, for example `<meta name="board-version" content="v2">`. Run `board check . <file.html>` on every piece before handoff and fix any failures. The check renders named formats to PNG and replaces `check.json` beside the first input. Pass all the pieces you want listed in the receipt. Use `board render` for a render on its own and `board kit .` to show the kit.
+8. For brand feedback, record the client's exact words, revise and confirm the direction as above, update `DESIGN.md`, then run `board freeze . <id> --note "<brand change>"`. Use `board status` to find pieces to revisit and update each piece's version when revised. For piece feedback, edit only that piece.
+
+`board check` runs the no-AI-smell floor and checks the brand name where it appears. Required campaign copy and photos apply when the piece declares `<meta name="board-campaign" content="campaign-name">` or you pass `--brief`.
+
+## Optional tools
+
+- Add `--check` to `board directions .` to see floor and campaign brief findings on each sample. Add it to `board freeze . <id>` to require those sample checks as well as DESIGN.md validation.
+
+- Add `--consistency` to `board check` for frozen-board comparisons and composition notes on named kit formats such as `post.html` or `march-post.html`.
+- Composition families and sample pages in `board/` are optional references. Use their arrangements as options when composing a new piece.
+- `board export astryx` writes an Astryx theme from the frozen board.
+- `board freeze . <id> --extract` generates a guide from measured sample values. It replaces the root guide with its generated file.
