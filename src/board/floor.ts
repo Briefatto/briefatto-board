@@ -94,29 +94,53 @@ export async function checkImpeccable(findings: FloorFault[], page: Page, brandF
 /** WCAG 2.x 1.4.3: 4.5:1, or 3:1 for large text (18 pt = 24 px, or 14 pt = 18.67 px bold). */
 const contrastBar = (size: number, weight: number) => (size >= 24 || (size >= 18.67 && weight >= 700) ? 3 : 4.5);
 
-/** Text over text: two text boxes sharing at least this part of the smaller one. Tight leading can make neighbouring lines touch. */
-const OVERLAP_SHARE = 0.2;
+export function formatNotes(r: Rendered, fmt: BoardFormat): FloorFault[] {
+  if (fmt.kind !== "print") return [];
+  return [...new Set((r.actions ?? []).filter((a) => a.buttonTreatment && a.fragments.length).map((a) => a.text))].map((text) => ({
+    rule: "print-web-cta", detail: `Button treatment on print copy: "${text}"`, source: "render",
+  }));
+}
 
 export function renderFaults(r: Rendered, fmt: BoardFormat): FloorFault[] {
   const faults: FloorFault[] = [];
   const minPx = minTextPx(fmt);
-  const t = r.texts;
-  t.forEach((a, i) => {
-    const b = a.box;
-    if (b.x < -1 || b.y < -1 || b.x + b.w > r.width + 1 || b.y + b.h > r.height + 1) faults.push({ rule: "text-off-canvas", detail: a.text.slice(0, 60), source: "render" });
+  r.texts.forEach((a, i) => {
     if (a.size < minPx - 0.5) faults.push({ rule: "text-too-small", detail: `${a.size}px < ${minPx}px (${MIN_SEEN_TEXT_PX}px when seen ${fmt.seenWidth}px wide): "${a.text.slice(0, 40)}"`, source: "render" });
-    if (a.clipped) faults.push({ rule: "text-clipped", detail: a.text.slice(0, 60), source: "render" });
     if (!a.loaded) faults.push({ rule: "font-not-loaded", detail: `${a.family}: "${a.text.slice(0, 40)}"`, source: "render" });
     const c = r.contrast[i];
     if (c != null && c < contrastBar(a.size, a.weight)) faults.push({ rule: "low-contrast", detail: `${c}:1 "${a.text.slice(0, 40)}"`, source: "render" });
-    for (let j = i + 1; j < t.length; j++) {
-      if (t[j].within.includes(i) || a.within.includes(j)) continue;
-      const o = t[j].box;
-      const w = Math.min(b.x + b.w, o.x + o.w) - Math.max(b.x, o.x);
-      const h = Math.min(b.y + b.h, o.y + o.h) - Math.max(b.y, o.y);
-      if (w > 0 && h > 0 && (w * h) / Math.min(b.w * b.h, o.w * o.h) >= OVERLAP_SHARE) faults.push({ rule: "text-over-text", detail: `"${a.text.slice(0, 30)}" / "${t[j].text.slice(0, 30)}"`, source: "render" });
-    }
   });
+  const copy = r.copy ?? [];
+  const zones = fmt.kind === "story" ? fmt.safeZones : undefined;
+  for (const a of copy) {
+    const detail = a.text.slice(0, 60);
+    if (a.offCanvas) faults.push({ rule: "text-off-canvas", detail, source: "render" });
+    else if (a.clipped) faults.push({ rule: "text-clipped", detail, source: "render" });
+    if (zones) {
+      const edges = [
+        zones.top && a.fragments.some((b) => b.y < zones.top) ? "top" : "",
+        zones.right && a.fragments.some((b) => b.x + b.w > r.width - zones.right) ? "right" : "",
+        zones.bottom && a.fragments.some((b) => b.y + b.h > r.height - zones.bottom) ? "bottom" : "",
+        zones.left && a.fragments.some((b) => b.x < zones.left) ? "left" : "",
+      ].filter(Boolean);
+      if (edges.length) faults.push({ rule: "story-unsafe-copy", detail: `"${detail}" in ${edges.join(", ")} unsafe zone`, source: "render" });
+    }
+  }
+  for (const a of r.actions ?? []) {
+    if (a.offCanvas || a.clipped) faults.push({ rule: "cta-clipped", detail: a.text.slice(0, 60), source: "render" });
+  }
+  const fragments = copy.flatMap(({ text, fragments }) => fragments.map((box) => ({ text, box }))).sort((a, b) => a.box.y - b.box.y);
+  for (const [i, a] of fragments.entries()) {
+    const b = a.box;
+    for (let j = i + 1; j < fragments.length; j++) {
+      const o = fragments[j].box;
+      // Use the same one-CSS-pixel tolerance as edge clipping, for range rounding.
+      if (o.y >= b.y + b.h - 1) break;
+      const w = Math.min(b.x + b.w, o.x + o.w) - Math.max(b.x, o.x);
+      const h = Math.min(b.y + b.h, o.y + o.h) - o.y;
+      if (w > 1 && h > 1) faults.push({ rule: "text-over-text", detail: `"${a.text.slice(0, 30)}" / "${fragments[j].text.slice(0, 30)}"`, source: "render" });
+    }
+  }
   // One fault per rule and detail.
   const seen = new Set<string>();
   return faults.filter((f) => !seen.has(f.rule + f.detail) && (seen.add(f.rule + f.detail), true));
@@ -132,8 +156,8 @@ export function briefFaults(r: Rendered, fmt: BoardFormat, e: Essentials | undef
   if (!e && !brand) return [];
   const faults: FloorFault[] = [];
   const minPx = minTextPx(fmt), bodyPx = bodyTextPx(fmt);
-  const runs = r.texts.filter((t) => norm(t.text));
-  const joined = runs.map((t) => norm(t.text)).join(" ");
+  const runs = r.texts.filter((t) => !t.clipped && norm(t.text));
+  const joined = norm(r.visibleText ?? runs.map((t) => t.text).join(" "));
   const brandNorm = (text: string) => norm(text).replace(/’/g, "'");
   const wanted = [
     ...(brand && brandNorm(joined).includes(brandNorm(brand)) ? [{ s: brand, rule: "brand" }] : []),

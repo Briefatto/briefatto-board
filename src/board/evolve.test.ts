@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempDisposableSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempDisposableSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { test } from "node:test";
@@ -51,7 +51,7 @@ function authoredFixture(project: string) {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "hero.html"), [
     '<!doctype html><html lang="en"><head><title>Fixture</title></head>',
-    '<body style="margin:0;background:#0e1a2b;color:#fff"><h1 style="font:32px serif">Open Fridays.</h1>',
+    '<body style="margin:0;background:#0e1a2b;color:#fff"><h1 style="font:32px serif">Open Fridays.</h1><p style="font:32px serif">Pick it up</p>',
     '<svg width="100" height="8"><line x1="2" y1="4" x2="98" y2="4" stroke="#12345680" stroke-width="2"/></svg></body></html>',
   ].join("\n"));
   writeFileSync(join(project, "brief.md"), "# Test board\n\n**Who.** A bakery on the quay.\n\n- Brand: Test board\n- Headline: Open Fridays.\n- Call to action: Pick it up\n");
@@ -333,6 +333,70 @@ test("default freeze names the missing project guide", () => {
   assert.equal(existsSync(join(project.path, "board")), false);
 });
 
+test("freeze preview shows the exact claims and their sources before a guide exists", () => {
+  using project = scratch();
+  const dir = join(project.path, "directions", "pick");
+  const brief = join(project.path, "brief.md");
+  const notes = join(project.path, "refs");
+  const draft = authoredFixture(project.path);
+  writeFileSync(brief, "\r\n" + readFileSync(brief, "utf8").replace(/\n/g, "\r\n") + "- Website: bakery.example/friday\r\n");
+  mkdirSync(notes);
+  writeFileSync(join(notes, "notes.md"), "# Approval\n\n```constraint\nKeep the Friday headline.\n```\n");
+  const hero = join(dir, "hero.html");
+  writeFileSync(hero, readFileSync(hero, "utf8").replace(/32px/g, "32.125px"));
+  const tree = readdirSync(project.path, { recursive: true });
+
+  const preview = JSON.parse(runBoard(project.path, "freeze", ".", "pick", "--dry-run"));
+  assert.deepEqual(preview.brief.brandFacts, [{ value: "**Who.** A bakery on the quay.", source: "brief.md:4" }]);
+  assert.deepEqual(preview.brief.clientConstraints, [{ value: "Keep the Friday headline.", source: "refs/notes.md:4" }]);
+  assert.deepEqual(preview.brief.campaignCopy[2], { role: "Call to action", copy: "Pick it up", source: "brief.md:8" });
+  assert.deepEqual(preview.campaignRequirements.required, ["Pick it up", "bakery.example/friday"]);
+  assert.deepEqual(preview.campaignFindings, []);
+  const [sample] = preview.samples;
+  assert.equal(sample.source, "directions/pick/hero.html");
+  assert.ok(sample.colours.includes("rgb(14, 26, 43)"));
+  assert.ok(sample.fontFamilies.includes("serif"));
+  assert.ok(sample.fontSizes.includes("32.125px"));
+  assert.deepEqual(readdirSync(project.path, { recursive: true }), tree);
+
+  writeFileSync(join(project.path, "DESIGN.md"), draft);
+  const output = failedBoard(project.path, "freeze", ".", "pick");
+  assert.match(output, /font-size:.*"32\.125px" from directions\/pick\/hero\.html/);
+  assert.match(output, /client-constraint:.*"Keep the Friday headline\." verbatim from refs\/notes\.md:4/);
+});
+
+test("freeze blocks missing campaign copy in selected samples and tagged outputs", () => {
+  using project = scratch();
+  const draft = authoredFixture(project.path);
+  const guide = join(project.path, "DESIGN.md");
+  writeFileSync(guide, draft);
+  const hero = join(project.path, "directions", "pick", "hero.html");
+  const complete = readFileSync(hero, "utf8");
+  const missing = complete.replace("Pick it up", "Come by some time");
+  writeFileSync(hero, missing);
+  assert.match(failedBoard(project.path, "freeze", ".", "pick"), /directions\/pick\/hero\.html: essential-missing: "Pick it up" from brief\.md/);
+  const campaign = '<meta name="board-campaign" content="opening">';
+  writeFileSync(hero, missing.replace("<head>", "<head>" + campaign));
+  assert.match(failedBoard(project.path, "freeze", ".", "pick", "--extract", "--force"), /directions\/pick\/hero\.html: essential-missing/);
+  assert.equal(existsSync(join(project.path, "board")), false);
+  assert.equal(readFileSync(guide, "utf8"), draft);
+
+  writeFileSync(hero, complete.replace("<head>", "<head>" + campaign));
+  runBoard(project.path, "freeze", ".", "pick");
+  writeFileSync(guide, draft + "\nKeep this layout on holidays.\n");
+  runBoard(project.path, "freeze", ".", "pick");
+  const outputs = join(project.path, "outputs");
+  mkdirSync(outputs);
+  const piece = join(outputs, "hero.html");
+  const outputWithVersion = (version: string) =>
+    missing.replace("<head>", `<head>${campaign}<meta name="board-version" content="${version}">`);
+  writeFileSync(piece, outputWithVersion("v1"));
+  assert.match(failedBoard(project.path, "freeze", ".", "pick"), /outputs\/hero\.html: essential-missing: "Pick it up" from brief\.md/);
+  writeFileSync(piece, outputWithVersion("v2"));
+  assert.match(failedBoard(project.path, "freeze", ".", "pick"), /outputs\/hero\.html: essential-missing: "Pick it up" from brief\.md/);
+  assert.equal(readBoard(join(project.path, "board")).version, 2);
+});
+
 test("failed authored validation reports each field and leaves the current version intact", () => {
   using project = scratch();
   const current = join(project.path, "board");
@@ -357,6 +421,11 @@ test("failed authored validation reports each field and leaves the current versi
   for (const name of ["colour", "font-family", "font-size", "brand-fact", "campaign-copy", "file-reference", "truncated-line"]) {
     assert.match(output, new RegExp(`\\b${name}\\b`));
   }
+  assert.match(output, /colour:.*"rgb\(14, 26, 43\)" from directions\/pick\/hero\.html/);
+  assert.match(output, /font-family:.*"serif" from directions\/pick\/hero\.html/);
+  assert.match(output, /font-size:.*"32px" from directions\/pick\/hero\.html/);
+  assert.match(output, /brand-fact:.*"\*\*Who\.\*\* A bakery on the quay\." verbatim from brief\.md:3/);
+  assert.match(output, /campaign-copy:.*"Headline" row with "Open Fridays\." from brief\.md:6/);
   assert.deepEqual(readFileSync(join(current, "board.json")), lastBoard);
   assert.deepEqual(readFileSync(join(current, "DESIGN.md")), lastDesign);
   assert.equal(readFileSync(design, "utf8"), invalid, "a failed draft stays available for correction without a stamp");
@@ -373,7 +442,7 @@ test("freeze remembers client quotes, versions new quotes alone and keeps both r
   const design = join(project.path, "DESIGN.md");
   mkdirSync(dir, { recursive: true });
   mkdirSync(refs);
-  writeFileSync(join(dir, "hero.html"), '<!doctype html><html lang="en"><head><title>Fixture</title></head><body style="margin:0;background:#0e1a2b"></body></html>');
+  writeFileSync(join(dir, "hero.html"), '<!doctype html><html lang="en"><head><title>Fixture</title></head><body style="margin:0;background:#0e1a2b"><p>EUR 12</p></body></html>');
   const subline = "A long line about the bakery and the full offer, including all the words at the end of the original sentence.";
   writeFileSync(join(project.path, "brief.md"), `# Test board\n\n- Brand: Test Bakery\n- Subline: ${subline}\n- Details: EUR 12, Friday collection only\n- URL: test.example\n`);
   mkdirSync(join(project.path, "assets"));
@@ -505,7 +574,7 @@ test("the yellow bike banner reports the v1 accent and keeps its made-under clai
   writeFileSync(join(outputs, "hero.html"), page.replace('<meta name="board-version" content="v2">', "").replace("#FFC93C", "#0e1a2b"));
 
   const log = runBoard(project.path, "check", ".", "outputs/banner.html");
-  assert.match(log, /^PASS banner\.html: floor 0; made under v2; brief 0; campaign brief skipped; note: uses #FFC93C, which is v1's accent, outside v2$/m);
+  assert.match(log, /^PASS banner\.html: floor 0; made under v2; brief 0; note: uses #FFC93C, which is v1's accent, outside v2; checks ran: .*checks skipped: .*campaign copy \(piece has no board-campaign meta/m);
   const [banner] = JSON.parse(readFileSync(join(outputs, "check.json"), "utf8"));
   assert.equal(banner.boardVersion, "v2");
   assert.equal(banner.checkedAgainst, "v2");
@@ -540,7 +609,7 @@ test("a frozen guide's exact colours remain valid after palette clustering", () 
   writeFileSync(draft, guide("#fdfcfb"));
   writeFileSync(join(outputs, "notice.html"), page("rgb(250, 249, 247)"));
   writeFileSync(join(outputs, "draft.html"), page("#fdfcfb"));
-  assert.match(runBoard(project.path, "check", ".", "outputs/notice.html", "outputs/draft.html"), /^PASS notice\.html:[^\n]*\nPASS draft\.html:.*uses #FDFCFB, outside v1$/m);
+  assert.match(runBoard(project.path, "check", ".", "outputs/notice.html", "outputs/draft.html"), /^PASS notice\.html:[^\n]*\nPASS draft\.html:.*uses #FDFCFB, outside v1; checks ran:/m);
   const [approved, undeclared] = JSON.parse(readFileSync(join(outputs, "check.json"), "utf8"));
   assert.deepEqual(approved.outsideValues, []);
   assert.deepEqual(undeclared.outsideValues, [{ kind: "colour", value: "#FDFCFB" }]);
@@ -679,8 +748,8 @@ test("board check retains the floor, optional consistency and separate custom pr
   writeFileSync(join(outputs, "kit-sheet.html"), page("#fff"));
 
   const defaults = failedBoard(project.path, "check", ".", "outputs/*.html");
-  assert.match(defaults, /^PASS post: floor 0; made-under version unrecorded; brief 0; campaign brief skipped; note: uses #FFFFFF, outside v2.*note: uses serif, outside v2.*note: design-system-font: font-family: Georgia/m);
-  assert.match(defaults, /^FAIL flyer\.html:.*text-too-small.*Below the first screen.*brief 0; campaign brief skipped/m);
+  assert.match(defaults, /^PASS post: floor 0; made-under version unrecorded; brief 0; note: uses #FFFFFF, outside v2.*note: uses serif, outside v2.*note: design-system-font: font-family: Georgia/m);
+  assert.match(defaults, /^FAIL flyer\.html:.*text-too-small.*Below the first screen.*brief 0;.*checks ran: .*checks skipped: .*campaign copy/m);
   assert.doesNotMatch(defaults, /essential-missing|asset-missing/);
   assert.doesNotMatch(defaults, /off-palette|off-fonts|; family |kit-sheet/);
   const defaultReceipts = JSON.parse(readFileSync(join(outputs, "check.json"), "utf8"));
@@ -695,7 +764,7 @@ test("board check retains the floor, optional consistency and separate custom pr
   assert.match(runBoard(project.path, "status"), /outputs\/flyer.html: made-under version unrecorded/);
 
   writeFileSync(join(outputs, "hero.html"), page("#fff").replace("</body>", '<p style="font-size:10px">Tiny label</p></body>'));
-  assert.match(failedBoard(project.path, "check", "--floor-only", "outputs/hero.html"), /^FAIL hero:.*text-too-small.*Tiny label/m);
+  assert.match(failedBoard(project.path, "check", "--floor-only", "outputs/hero.html"), /^FAIL hero:.*text-too-small.*Tiny label.*campaign copy \(floor-only mode has no frozen board\)/m);
 });
 
 test("the bakery closure needs no subscription pitch or photo unless opted into the campaign", () => {
@@ -723,15 +792,23 @@ test("the bakery closure needs no subscription pitch or photo unless opted into 
     .replace("<head><title>", "<meta content='sourdough-subscription' name='board-campaign'><title>")
     .replace("</head>", ""));
 
-  const defaults = runBoard(project.path, "check", ".", "outputs/*.html");
-  assert.match(defaults, /^PASS 24-december-closure\.html: floor 0;.*brief 0; campaign brief skipped/m);
+  const defaults = failedBoard(project.path, "check", ".", "outputs/*.html");
+  assert.match(defaults, /^PASS 24-december-closure\.html: floor 0;.*brief 0;.*checks ran: .*checks skipped: .*campaign copy \(piece has no board-campaign meta/m);
   assert.match(defaults, /^FAIL post:.*essential-missing: "Start your subscription".*term-missing: "Starts 1 March".*asset-missing:.*loaf-rustic.jpg/m);
   const receipts = JSON.parse(readFileSync(join(outputs, "check.json"), "utf8"));
-  assert.equal(receipts.find((x: { format: string }) => x.format === "24-december-closure.html").briefApplied, false);
-  assert.equal(receipts.find((x: { format: string }) => x.format === "post").briefApplied, true);
-  const forced = runBoard(project.path, "check", ".", "outputs/24-december-closure.html", "--brief");
+  const noticeReceipt = receipts.find((x: { format: string }) => x.format === "24-december-closure.html");
+  assert.equal(noticeReceipt.briefApplied, false);
+  assert.deepEqual(noticeReceipt.checks.skipped.find(({ check }: { check: string }) => check === "campaign copy"), {
+    check: "campaign copy", reason: "piece has no board-campaign meta and --brief was not supplied",
+  });
+  const campaignReceipt = receipts.find((x: { format: string }) => x.format === "post");
+  assert.equal(campaignReceipt.briefApplied, true);
+  assert.ok(campaignReceipt.checks.ran.includes("campaign copy"));
+  assert.ok(campaignReceipt.checks.ran.includes("text clipping"));
+  assert.ok(campaignReceipt.checks.ran.includes("text overlap"));
+  const forced = failedBoard(project.path, "check", ".", "outputs/24-december-closure.html", "--brief");
   assert.match(forced, /^FAIL 24-december-closure\.html:.*essential-missing: "Start your subscription".*term-missing: "Starts 1 March".*asset-missing:.*loaf-rustic.jpg/m);
-  assert.doesNotMatch(forced, /campaign brief skipped/);
+  assert.doesNotMatch(forced, /campaign copy \(/);
 
   writeFileSync(closure, notice.replace("font-size:36px", "font-size:10px"));
   const smallBrand = failedBoard(project.path, "check", ".", "outputs/24-december-closure.html");

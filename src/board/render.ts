@@ -21,12 +21,22 @@ export interface TextRun {
   lineHeight: number;
   transform: string;
   italic: boolean;
+  fontStyle?: string;
   align: string;
   color: string;
   box: Box;
   clipped: boolean;
-  /** Indices of text runs whose element contains this one (a <strong> inside a <p>). */
-  within: number[];
+}
+
+interface CopyGeometry {
+  text: string;
+  fragments: Box[];
+  offCanvas: boolean;
+  clipped: boolean;
+}
+
+interface ActionGeometry extends CopyGeometry {
+  buttonTreatment: boolean;
 }
 
 export interface ColourUse { value: string; kind: "text" | "bg" | "border" | "fill" | "stroke" | "gradient" | "shadow"; area: number }
@@ -37,6 +47,10 @@ export interface Drawn {
   width: number;
   height: number;
   texts: TextRun[];
+  copy?: CopyGeometry[];
+  actions?: ActionGeometry[];
+  visibleText?: string;
+  generatedCopy?: number;
   colours: ColourUse[];
   radii: Array<{ px: number; full: boolean }>;
   images: ImageUse[];
@@ -65,7 +79,7 @@ export interface WebsiteRender {
 }
 
 /** Runs inside the page. Must stay self-contained (it is serialised by Playwright). */
-function readPage(canvas: { width: number; height: number; collectDesignStyles: boolean; website: boolean }): Drawn {
+function readPage(canvas: { width: number; height: number; collectDesignStyles: boolean; website: boolean; fixedCanvas: boolean }): Drawn {
   const W = canvas.width, H = canvas.height;
   const inter = (r: DOMRect) => {
     const x0 = Math.max(0, r.left), y0 = Math.max(0, r.top), x1 = Math.min(W, r.right), y1 = Math.min(H, r.bottom);
@@ -75,17 +89,21 @@ function readPage(canvas: { width: number; height: number; collectDesignStyles: 
   const ctx = document.createElement("canvas").getContext("2d")!;
   const probe = "mmmmmmmmmmlli1WQ@#&gy";
   const loadedCache = new Map<string, boolean>();
-  const fontLoaded = (fam: string) => {
-    if (generic.has(fam.toLowerCase())) return true;
-    if (loadedCache.has(fam)) return loadedCache.get(fam)!;
+  const fontLoaded = (family: string, weight: string, style: string, text: string) => {
+    if (generic.has(family.toLowerCase())) return true;
+    const key = JSON.stringify([family, weight, style]);
+    if (loadedCache.has(key)) return loadedCache.get(key)!;
+    // Use the same face selection as the element, including faces loaded lazily by the browser.
+    const font = `${style} ${weight} 72px`;
+    const sample = probe + text;
     let ok = false;
     for (const fb of ["monospace", "serif", "sans-serif"]) {
-      ctx.font = `72px ${fb}`;
-      const w0 = ctx.measureText(probe).width;
-      ctx.font = `72px "${fam}", ${fb}`;
-      if (Math.abs(ctx.measureText(probe).width - w0) > 0.01) { ok = true; break; }
+      ctx.font = `${font} ${fb}`;
+      const w0 = ctx.measureText(sample).width;
+      ctx.font = `${font} ${family}, ${fb}`;
+      if (Math.abs(ctx.measureText(sample).width - w0) > 0.01) { ok = true; break; }
     }
-    loadedCache.set(fam, ok);
+    loadedCache.set(key, ok);
     return ok;
   };
   const out: Drawn = { width: W, height: H, texts: [], colours: [], radii: [], images: [], shadows: 0, fontLinks: [], devices: [], family: document.querySelector('meta[name="board-family"]')?.getAttribute("content") ?? null };
@@ -107,16 +125,204 @@ function readPage(canvas: { width: number; height: number; collectDesignStyles: 
   const transparent = (c: string) => !c || c === "transparent" || /rgba\([^)]*,\s*0\)$/.test(c) || /\/\s*0\)$/.test(c);
   const rootBgs = [document.documentElement, document.body].map((e) => getComputedStyle(e).backgroundColor).filter((c) => !transparent(c));
   for (const c of rootBgs) out.colours.push({ value: c, kind: "bg", area: W * H });
-  const els = Array.from(document.body.querySelectorAll("*"));
-  if (canvas.collectDesignStyles) els.unshift(document.documentElement, document.body);
-  const runOf = new Map<Element, number>();
+  const els = [document.documentElement, document.body, ...document.body.querySelectorAll("*")];
+  const copy: CopyGeometry[] = out.copy = [];
+  const actions: ActionGeometry[] = out.actions = [];
+  const visibleText: Array<{ node: Node; text: string; block: Element; first: DOMRect; last: DOMRect }> = [];
+  const testedActions = new Set<Element>();
+  const ink = document.createElement("canvas").getContext("2d")!;
+  const range = document.createRange();
+  type Edges = Pick<DOMRectReadOnly, "left" | "top" | "right" | "bottom">;
+  const canvasBounds = new DOMRect(0, 0, W, H);
+  const computedStyles = new Map<Element, CSSStyleDeclaration>();
+  const computed = (el: Element) => {
+    let style = computedStyles.get(el);
+    if (!style) computedStyles.set(el, style = getComputedStyle(el));
+    return style;
+  };
+  const htmlStyle = computed(document.documentElement);
+  const bodyStyle = computed(document.body);
+  // The viewport crop already handles document overflow. See CSS Overflow level 3 §3.1.4.
+  const overflowHost = htmlStyle.overflow === "visible" && htmlStyle.contain === "none" && bodyStyle.contain === "none"
+    ? document.body : document.documentElement;
+  // Keep the existing one-CSS-pixel tolerance for layout rounding at clip boundaries.
+  const beyond = (r: Edges, clip: Edges) => r.left < clip.left - 1 || r.top < clip.top - 1
+    || r.right > clip.right + 1 || r.bottom > clip.bottom + 1;
+  const intersect = (a: Edges, b: Edges) => ({
+    left: Math.max(a.left, b.left), top: Math.max(a.top, b.top),
+    right: Math.min(a.right, b.right), bottom: Math.min(a.bottom, b.bottom),
+  });
+  const clipsOverflow = (value: string) => value === "hidden" || value === "clip"
+    || (canvas.fixedCanvas && (value === "scroll" || value === "auto"));
+  const clipCache = new Map<Element, Edges | null>();
+  const clipBounds = (el: Element, cs: CSSStyleDeclaration): Edges | null => {
+    if (clipCache.has(el)) return clipCache.get(el)!;
+    const x = clipsOverflow(cs.overflowX), y = clipsOverflow(cs.overflowY);
+    let bounds = null;
+    if ((x || y) && cs.display !== "inline" && cs.display !== "contents") {
+      const r = el.getBoundingClientRect();
+      const sx = el instanceof HTMLElement && el.offsetWidth ? r.width / el.offsetWidth : 1;
+      const sy = el instanceof HTMLElement && el.offsetHeight ? r.height / el.offsetHeight : 1;
+      const left = r.left + el.clientLeft * sx, top = r.top + el.clientTop * sy;
+      bounds = {
+        left: x ? left : -Infinity, top: y ? top : -Infinity,
+        right: x ? left + el.clientWidth * sx : Infinity, bottom: y ? top + el.clientHeight * sy : Infinity,
+      };
+    }
+    clipCache.set(el, bounds);
+    return bounds;
+  };
+  const insetCache = new Map<Element, Edges | null>();
+  const insetBounds = (el: Element, cs: CSSStyleDeclaration): Edges | null => {
+    if (insetCache.has(el)) return insetCache.get(el)!;
+    const parts = /^inset\(([^()]*)\)$/.exec(cs.clipPath)?.[1].split(/\s+round\s+/, 1)[0].trim().split(/\s+/);
+    let bounds = null;
+    if (parts && parts.length <= 4 && parts.every((p) => /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:px|%)$/.test(p))) {
+      const [top, right = top, bottom = top, left = right] = parts;
+      const r = el.getBoundingClientRect();
+      const offset = (value: string, extent: number, layoutExtent: number) => parseFloat(value) * (value.endsWith("%") ? extent / 100 : extent / (layoutExtent || extent || 1));
+      const width = el instanceof HTMLElement ? el.offsetWidth : r.width;
+      const height = el instanceof HTMLElement ? el.offsetHeight : r.height;
+      bounds = {
+        left: r.left + offset(left, r.width, width), right: r.right - offset(right, r.width, width),
+        top: r.top + offset(top, r.height, height), bottom: r.bottom - offset(bottom, r.height, height),
+      };
+    }
+    insetCache.set(el, bounds);
+    return bounds;
+  };
+  const clipsFor = (el: Element, includeSelf: boolean): Edges[] | null => {
+    const clips: Edges[] = [];
+    let containingBlock: Element | null | undefined;
+    for (let a: Element | null = el; a; a = a.parentElement) {
+      const cs = computed(a);
+      // Common accessibility-only text is deliberately unpainted.
+      if (Number(cs.opacity) === 0 || cs.contentVisibility === "hidden"
+        || cs.clip === "rect(0px, 0px, 0px, 0px)") return null;
+      const inset = insetBounds(a, cs);
+      if (inset) {
+        if (inset.left >= inset.right || inset.top >= inset.bottom) return null;
+        clips.push(inset);
+      }
+      if (a === containingBlock) containingBlock = undefined;
+      const bounds = a !== document.documentElement && a !== overflowHost && clipBounds(a, cs);
+      if ((a !== el || includeSelf) && bounds && containingBlock === undefined) clips.push(bounds);
+      // An absolutely positioned descendant escapes overflow clips before its containing block.
+      if (a instanceof HTMLElement && (cs.position === "absolute" || cs.position === "fixed")) containingBlock = a.offsetParent;
+    }
+    return clips;
+  };
+  const geometry = (text: string, boxes: DOMRect[], clips: Edges[]): CopyGeometry => {
+    const fragments: Box[] = [];
+    for (const r of boxes) {
+      const shown = clips.reduce(intersect, intersect(r, canvasBounds));
+      if (shown.right > shown.left && shown.bottom > shown.top) {
+        fragments.push({ x: shown.left, y: shown.top, w: shown.right - shown.left, h: shown.bottom - shown.top });
+      }
+    }
+    return { text, fragments, offCanvas: boxes.some((r) => beyond(r, canvasBounds)), clipped: boxes.some((r) => clips.some((b) => beyond(r, b))) };
+  };
+  const actionStyle = (el: Element, cs: CSSStyleDeclaration) => {
+    const semantic = el.matches('button,[role="button"],input[type="button"],input[type="submit"]');
+    const labelled = el.hasAttribute("data-cta") || Array.from(el.classList)
+      .some((name) => /(?:^|[-_])(?:btn|button|cta)(?:$|[-_])/i.test(name));
+    if (!semantic && !el.matches("a[href]") && !labelled && cs.cursor !== "pointer") return null;
+    const padded = [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].some((value) => parseFloat(value) > 0);
+    const bordered = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].every((value) => parseFloat(value) > 0);
+    const buttonTreatment = padded && (!transparent(cs.backgroundColor) || cs.backgroundImage !== "none" || bordered);
+    return semantic || buttonTreatment ? { buttonTreatment } : null;
+  };
+  const textBlock = (el: Element) => {
+    let block = el;
+    while (block.parentElement && /^(inline|contents)/.test(computed(block).display)) block = block.parentElement;
+    return block;
+  };
+  const readCopy = (el: Element, cs: CSSStyleDeclaration) => {
+    const nodes = Array.from(el.childNodes).filter((n) => n.nodeType === 3 && n.textContent);
+    const inputLabel = el instanceof HTMLInputElement && el.matches('input[type="button"],input[type="submit"]') ? el.value.trim() : "";
+    if (!(nodes.length || inputLabel) || transparent(cs.color)) return;
+    const clips = clipsFor(el, true);
+    if (!clips) return;
+    const size = parseFloat(cs.fontSize), stack = cs.fontFamily;
+    const primaryFamily = (/^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^,]+)/.exec(stack)?.[0] ?? stack).trim();
+    const family = primaryFamily.replace(/^["']|["']$/g, "").replace(/\\(["'\\])/g, "$1");
+    const lineHeight = parseFloat(cs.lineHeight);
+    const layout: Box[] = [];
+    const textParts: string[] = [];
+    let clipped = false;
+    const remember = (node: Node, text: string, rects: DOMRect[]) => {
+      visibleText.push({ node, text, block: textBlock(el), first: rects[0], last: rects[rects.length - 1] });
+    };
+    const measure = (node: Node, rawText: string, rects: DOMRect[]) => {
+      if (!rects.length) return;
+      const text = rawText.trim().replace(/\s+/g, " ");
+      const sample = cs.textTransform === "uppercase" ? text.toUpperCase()
+        : cs.textTransform === "lowercase" ? text.toLowerCase() : text;
+      ink.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${stack}`;
+      const metrics = ink.measureText(sample);
+      const fontHeight = metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent;
+      const painted = rects.map((r) => {
+        // Ranges include unpainted ascent and descent. Scale the glyph metrics into viewport coordinates.
+        if (!fontHeight || cs.writingMode !== "horizontal-tb" || !(el instanceof HTMLElement) || inputLabel) return r;
+        const scale = r.height / fontHeight;
+        const y = r.top + (metrics.fontBoundingBoxAscent - metrics.actualBoundingBoxAscent) * scale;
+        return new DOMRect(r.x, y, r.width, (metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent) * scale);
+      });
+      const measured = geometry(text, painted, clips);
+      if (canvas.fixedCanvas || measured.fragments.length) copy.push(measured);
+      if (!measured.fragments.length) return;
+      clipped ||= measured.offCanvas || measured.clipped;
+      if (!measured.offCanvas && !measured.clipped && rects.length === measured.fragments.length) {
+        remember(node, rawText, rects);
+      }
+      textParts.push(text);
+      for (const r of rects) {
+        const h = Number.isFinite(lineHeight) ? Math.min(r.height, Math.max(lineHeight, size)) : r.height;
+        layout.push({ x: r.x, y: r.y + (r.height - h) / 2, w: r.width, h });
+      }
+    };
+    for (const node of nodes) {
+      range.selectNodeContents(node);
+      const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+      const text = node.textContent!;
+      if (text.trim()) measure(node, text, rects);
+      else if (rects.length) remember(node, text, rects);
+    }
+    if (inputLabel) measure(el, inputLabel, [el.getBoundingClientRect()]);
+    if (canvas.fixedCanvas && (inputLabel || nodes.some((n) => n.textContent?.trim()))) {
+      for (let a: Element | null = el; a && a !== document.body; a = a.parentElement) {
+        if (testedActions.has(a)) break;
+        const style = actionStyle(a, computed(a));
+        if (!style) continue;
+        testedActions.add(a);
+        const label = (inputLabel || (a as HTMLElement).innerText || a.textContent || "").trim().replace(/\s+/g, " ");
+        const actionClips = clipsFor(a, false);
+        if (actionClips) actions.push({ ...geometry(label, [a.getBoundingClientRect()], actionClips), ...style });
+        break;
+      }
+    }
+    if (!layout.length) return;
+    const x = Math.min(...layout.map((r) => r.x)), y = Math.min(...layout.map((r) => r.y));
+    const box = { x, y, w: Math.max(...layout.map((r) => r.x + r.w)) - x, h: Math.max(...layout.map((r) => r.y + r.h)) - y };
+    const text = textParts.join(" ");
+    const ls = cs.letterSpacing === "normal" ? 0 : parseFloat(cs.letterSpacing) / size;
+    const lh = Number.isFinite(lineHeight) ? lineHeight / size : 1.2;
+    out.texts.push({ text, family, stack, loaded: fontLoaded(primaryFamily, cs.fontWeight, cs.fontStyle, text), size, weight: parseInt(cs.fontWeight, 10), letterSpacingEm: Math.round(ls * 1000) / 1000, lineHeight: Math.round(lh * 100) / 100, transform: cs.textTransform, italic: cs.fontStyle !== "normal", fontStyle: cs.fontStyle, align: cs.textAlign, color: cs.color, box, clipped });
+    out.colours.push({ value: cs.color, kind: "text", area: box.w * box.h });
+  };
   for (const el of els) {
-    const cs = getComputedStyle(el);
-    if (cs.display === "none" || cs.visibility === "hidden" || parseFloat(cs.opacity) === 0) continue;
+    const cs = computed(el);
+    if (cs.display === "none" || cs.visibility === "hidden" || cs.visibility === "collapse" || parseFloat(cs.opacity) === 0) continue;
     const tag = el.tagName.toLowerCase();
     if (["script", "style", "link", "meta", "head", "title", "noscript"].includes(tag)) continue;
     const r = el.getBoundingClientRect();
     const area = inter(r);
+    if (area > 0) for (const pseudo of ["::before", "::after"]) {
+      const style = getComputedStyle(el, pseudo);
+      if (style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0
+        || transparent(style.color) || /^(?:none|normal|""|'')$|^url\(/.test(style.content)) continue;
+      if (clipsFor(el, false)) out.generatedCopy = (out.generatedCopy ?? 0) + 1;
+    }
     if (canvas.collectDesignStyles) {
       if (el instanceof SVGGeometryElement && cs.stroke !== "none" && parseFloat(cs.strokeWidth) > 0) {
         // Horizontal and vertical SVG rules paint even when their geometry has a zero-area box.
@@ -150,8 +356,10 @@ function readPage(canvas: { width: number; height: number; collectDesignStyles: 
         }
       }
     }
-    if (el === document.documentElement || el === document.body) continue;
-    if (area === 0) continue;
+    if (el === document.documentElement || el === document.body || area === 0) {
+      readCopy(el, cs);
+      continue;
+    }
     if (!transparent(cs.backgroundColor)) out.colours.push({ value: cs.backgroundColor, kind: "bg", area });
     const bgi = cs.backgroundImage;
     if (bgi && bgi !== "none") {
@@ -178,45 +386,17 @@ function readPage(canvas: { width: number; height: number; collectDesignStyles: 
     if (["img", "video", "canvas", "picture"].includes(tag)) {
       out.images.push({ box: { x: r.left, y: r.top, w: r.width, h: r.height }, fit: cs.objectFit, filter: cs.filter, radius: rad, src: (el as HTMLImageElement).currentSrc || (el as HTMLImageElement).src || tag });
     }
-    const textNodes = Array.from(el.childNodes).filter((n) => n.nodeType === 3 && (n.textContent ?? "").trim());
-    if (textNodes.length) {
-      const range = document.createRange();
-      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (const n of textNodes) {
-        range.selectNodeContents(n);
-        // Limit fragment height to its line height or font size before testing for overlap.
-        const fs = parseFloat(cs.fontSize);
-        const lineH = cs.lineHeight === "normal" ? Infinity : parseFloat(cs.lineHeight);
-        for (const rr of Array.from(range.getClientRects())) {
-          if (rr.width === 0 || rr.height === 0) continue;
-          const half = Math.min(rr.height, Math.max(lineH, fs)) / 2, cy = rr.top + rr.height / 2;
-          x0 = Math.min(x0, rr.left); y0 = Math.min(y0, cy - half); x1 = Math.max(x1, rr.right); y1 = Math.max(y1, cy + half);
-        }
-      }
-      if (x1 > x0) {
-        const stack = cs.fontFamily;
-        const family = stack.split(",")[0].trim().replace(/^["']|["']$/g, "");
-        const size = parseFloat(cs.fontSize);
-        const ls = cs.letterSpacing === "normal" ? 0 : parseFloat(cs.letterSpacing) / size;
-        const lh = cs.lineHeight === "normal" ? 1.2 : parseFloat(cs.lineHeight) / size;
-        // Clipped: an ancestor (or the element) hides overflow and the text extends past it.
-        let clipped = false;
-        for (let a: Element | null = el; a && a !== document.body; a = a.parentElement) {
-          const acs = getComputedStyle(a);
-          if (/(hidden|clip)/.test(acs.overflow + acs.overflowX + acs.overflowY)) {
-            const ar = a.getBoundingClientRect();
-            if (x0 < ar.left - 1 || x1 > ar.right + 1 || y0 < ar.top - 1 || y1 > ar.bottom + 1) { clipped = true; break; }
-          }
-        }
-        const text = textNodes.map((n) => n.textContent!.trim()).join(" ").replace(/\s+/g, " ");
-        const within: number[] = [];
-        for (let a = el.parentElement; a; a = a.parentElement) if (runOf.has(a)) within.push(runOf.get(a)!);
-        runOf.set(el, out.texts.length);
-        out.texts.push({ within, text, family, stack, loaded: fontLoaded(family), size, weight: parseInt(cs.fontWeight, 10), letterSpacingEm: Math.round(ls * 1000) / 1000, lineHeight: Math.round(lh * 100) / 100, transform: cs.textTransform, italic: cs.fontStyle !== "normal", align: cs.textAlign, color: cs.color, box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, clipped });
-        out.colours.push({ value: cs.color, kind: "text", area: (x1 - x0) * (y1 - y0) });
-      }
-    }
+    readCopy(el, cs);
   }
+  visibleText.sort((a, b) =>
+    a.node.compareDocumentPosition(b.node) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
+  );
+  out.visibleText = visibleText.map((run, i) => {
+    const previous = visibleText[i - 1];
+    const separate = previous && (previous.block !== run.block
+      || previous.last.bottom <= run.first.top || run.first.bottom <= previous.last.top);
+    return (separate ? " " : "") + run.text;
+  }).join("");
   for (const d of Array.from(document.querySelectorAll("[data-device]"))) {
     const r = d.getBoundingClientRect();
     if (!inter(r)) continue;
@@ -368,7 +548,7 @@ export class Renderer {
       if (website?.captureHtml) website.captureHtml(await page.content());
       await inspect?.(page);
       const height = fmt?.height ?? await page.evaluate(() => Math.max(innerHeight, document.scrollingElement!.scrollHeight));
-      const drawn = await page.evaluate(readPage, { width, height, collectDesignStyles, website: website !== undefined });
+      const drawn = await page.evaluate(readPage, { width, height, collectDesignStyles, website: website !== undefined, fixedCanvas: fmt !== undefined });
       const buf = await page.screenshot({ fullPage: !fmt, clip: { x: 0, y: 0, width, height } });
       writeFileSync(pngPath, buf);
       const png = PNG.sync.read(buf);

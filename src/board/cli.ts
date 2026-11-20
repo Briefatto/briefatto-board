@@ -7,9 +7,9 @@ import { exportAstryx } from "./astryx.js";
 import { check } from "./check.js";
 import { diffBoards } from "./diff.js";
 import { findProjectFormats, FORMATS, formatFiles, formatOfFile, isFormatFile, loadProjectFormats } from "./formats.js";
-import { freeze, renderBoard, type Board } from "./freeze.js";
+import { freeze, previewFreeze, renderBoard, type Board } from "./freeze.js";
 import { boardValueKey, hasOutsideValues, isPieceFile, outputFiles, pieceStatusText, pieceVersion, pieceVersionText, readPiece, recordValueObservation } from "./pieces.js";
-import { captureReference, writeReferenceSheet } from "./refs.js";
+import { captureReferences, writeReferenceSheet } from "./refs.js";
 import { MissingChromiumError, Renderer } from "./render.js";
 import { writeSheet, writeStylescape, type SheetItem } from "./sheet.js";
 import { prepareStandingInstructions } from "./standing.js";
@@ -44,16 +44,17 @@ function line(x: Awaited<ReturnType<typeof check>>[number], piece?: ReturnType<t
   const br = "brief" in x ? x.brief : [];
   const values = "outsideValues" in x ? x.outsideValues.map(({ kind, value, previousVersion, previousRole }) =>
     `uses ${value}${previousRole ? `, which is ${previousVersion}'s ${previousRole}` : previousVersion ? `, a ${kind} in ${previousVersion}` : ""}, outside ${current}`) : [];
-  const notes = "designNotes" in x ? x.designNotes.map((f) => `${f.rule}: ${f.detail}`) : [];
+  const notes = x.designNotes.map((f) => `${f.rule}: ${f.detail}`);
   return `${x.pass ? "PASS" : "FAIL"} ${x.format}: floor ${x.floor.length}${x.floor.length ? ` (${x.floor.map((f) => `${f.rule}: ${f.detail}`).join("; ")})` : ""}` +
     (piece ? `; ${pieceVersionText(piece)}` : "") +
     `; brief ${br.length}${br.length ? ` (${br.map((f) => `${f.rule}: ${f.detail}`).join("; ")})` : ""}` +
-    ("briefApplied" in x && !x.briefApplied ? "; campaign brief skipped" : "") +
-    (current ? [...values, ...notes].map((note) => `; note: ${note}`).join("") : "") +
+    [...values, ...notes].map((note) => `; note: ${note}`).join("") +
     (c ? `; off-palette ${c.offPalette.length}${c.offPalette.length ? ` (${c.offPalette.map((o) => `${o.hex} ${o.kind} ΔE${o.deltaE} from ${o.nearest}`).join("; ")})` : ""}; off-fonts ${c.offFonts.length}${c.offFonts.length ? ` (${c.offFonts.join(", ")})` : ""}` : "") +
     (c?.deviceMissing ? "; device missing (no data-device element)" : "") +
     (c?.resizedFrom?.length ? `; note: same thirds arrangement as ${c.resizedFrom.join(", ")} on a different shape` : "") +
-    (family ? `; family ${family.name}${family.declared ? "" : " (nearest shape)"}: ${family.beside.join("; ")}` : "");
+    (family ? `; family ${family.name}${family.declared ? "" : " (nearest shape)"}: ${family.beside.join("; ")}` : "") +
+    `; checks ran: ${x.checks.ran.join(", ")}` +
+    (x.checks.skipped.length ? `; checks skipped: ${x.checks.skipped.map(({ check, reason }) => `${check} (${reason})`).join(", ")}` : "");
 }
 
 /** The floor and the brief's requirements on a direction's own samples, before anyone picks or freezes it. */
@@ -102,8 +103,23 @@ async function main() {
     return;
   }
   if (cmd === "refs") {
-    if (args.length === 4 && args[1] === "--capture") {
-      console.log(await captureReference(resolve(args[0]), args[2], args[3]));
+    const capture = args.indexOf("--capture");
+    if (capture >= 0) {
+      const captures = args.slice(capture + 1);
+      if (capture > 1 || captures.length === 0 || captures.length % 2 !== 0) {
+        throw new Error("Usage: board refs [project] --capture <url> <image.png> [<url> <image.png> ...]");
+      }
+      const requests = [];
+      for (let i = 0; i < captures.length; i += 2) requests.push({ url: captures[i], image: captures[i + 1] });
+      for (const result of await captureReferences(resolve(capture ? args[0] : "."), requests)) {
+        if ("error" in result) {
+          console.error(`${result.url}: ${result.error}`);
+          process.exitCode = 1;
+        } else {
+          console.log(result.output);
+          for (const warning of result.warnings) console.warn(`${basename(result.output)}: ${warning}`);
+        }
+      }
       return;
     }
     if (args.length > 1) throw new Error("Usage: board refs [project]");
@@ -135,8 +151,8 @@ async function main() {
   if (cmd === "freeze") {
     const note = flag("note");
     const boardName = flag("name");
-    const scope = args.filter((arg) => !["--check", "--force", "--extract"].includes(arg));
-    if (scope.length > 2 || scope.some((arg) => arg.startsWith("--"))) throw new Error("Usage: board freeze [project] [<direction>] [--name <name>] [--note <note>] [--check]");
+    const scope = args.filter((arg) => !["--check", "--force", "--extract", "--dry-run"].includes(arg));
+    if (scope.length > 2 || scope.some((arg) => arg.startsWith("--"))) throw new Error("Usage: board freeze [project] [<direction>] [--name <name>] [--note <note>] [--check] [--dry-run]");
     const project = resolve(scope[0] ?? ".");
     const dir = scope[1] ? join(project, "directions", scope[1]) : undefined;
     if (!dir && !existsSync(adoptionPath(project))) throw new Error("Run board adopt to select existing pages, or give board freeze a direction ID.");
@@ -147,15 +163,21 @@ async function main() {
       return header?.match(/^name:[ \t]*(.+)$/m)?.[1].trim().replace(/^(["'])(.*)\1$/, "$2") ?? basename(project);
     };
     const name = boardName ?? (dir ? briefTitle(project) : adoptedTitle());
+    const boardDir = join(project, "board");
+    const sources = dir ? { directionDir: dir } : { project };
+    if (args.includes("--dry-run")) {
+      console.log(JSON.stringify(await previewFreeze({ ...sources, boardDir }), null, 2));
+      return;
+    }
     if (args.includes("--check")) {
       const rr = new Renderer();
       try {
         if (dir) {
           const preview = await renderBoard({ directionDir: dir, boardDir: join(dir, "_values"), name, renderer: rr });
-          const bad = (await checkSamples(dir, preview, rr)).filter((x) => x.floor.length || ("brief" in x && x.brief.length));
+          const bad = (await checkSamples(dir, preview, rr)).filter((x) => x.floor.length || ("brief" in x && x.brief.some((f) => f.rule !== "essential-missing" && f.rule !== "term-missing")));
           if (bad.length && !args.includes("--force")) {
             for (const x of bad) console.log(`sample ${line(x, undefined, versionLabel(preview.version))}`);
-            throw new Error(`Not frozen: fix these samples in ${dir} first (or pass --force to freeze them as they are).`);
+            throw new Error(`Not frozen: fix these samples in ${dir}. Pass --force to waive the optional sample checks. Required campaign copy still applies.`);
           }
         } else {
           const { evidence } = await adopt(project, loadAdoption(project), rr, true);
@@ -170,10 +192,9 @@ async function main() {
         }
       } finally { await rr.close(); }
     }
-    const boardDir = join(project, "board");
     const { board: b, changed } = await freeze({
-      ...(dir ? { directionDir: dir } : { project }), boardDir, name, note, extract: args.includes("--extract"),
-      onValidated: () => console.log("PASS DESIGN.md: computed colours, font families and sizes, font loads, line integrity, project file references."),
+      ...sources, boardDir, name, note, extract: args.includes("--extract"),
+      onValidated: () => console.log("PASS DESIGN.md: computed colours, font families and sizes, required quotations, font load sources, line integrity, project file references."),
       prepareCurrent: (guide, source) => prepareStandingInstructions(project, guide, source),
     });
     if (!changed) {
@@ -265,7 +286,7 @@ async function main() {
       });
     }
     writeFileSync(out, JSON.stringify(res.map((x, i) => ({ ...x, ...versions[i], checkedAgainst: current ?? undefined })), null, 2));
-    if (res.some((x) => x.floor.length > 0)) process.exitCode = 1;
+    if (res.some((x) => !x.pass)) process.exitCode = 1;
     res.forEach((x, i) => console.log(line(x, versions[i], current ?? undefined)));
     console.log(out);
     return;

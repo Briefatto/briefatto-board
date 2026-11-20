@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 
 /** Read explicitly marked client quotes without interpreting their wording. */
 export function readConstraints(path: string): string[] {
+  return readConstraintSources(path).map(({ value }) => value);
+}
+
+export function readConstraintSources(path: string): Array<{ value: string; line: number }> {
   let notes: string;
   try {
     const bytes = readFileSync(path);
@@ -14,7 +18,7 @@ export function readConstraints(path: string): string[] {
     throw error;
   }
 
-  const quotes: string[] = [];
+  const quotes: Array<{ value: string; line: number }> = [];
   let open: { marker: string; constraint: boolean; start: number } | undefined;
   for (const fence of notes.matchAll(/(?:^|(?<=\n))(`{3,}|~{3,})([^\r\n]*)(?:\r?\n|$)/g)) {
     const [, marker, info] = fence;
@@ -25,7 +29,7 @@ export function readConstraints(path: string): string[] {
     if (!marker.startsWith(open.marker) || info.trim()) continue;
     if (open.constraint) {
       const quote = notes.slice(open.start, fence.index).replace(/\r?\n$/, "");
-      if (quote.trim()) quotes.push(quote);
+      if (quote.trim()) quotes.push({ value: quote, line: notes.slice(0, open.start).split("\n").length });
     }
     open = undefined;
   }

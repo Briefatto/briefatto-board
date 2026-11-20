@@ -4,10 +4,10 @@
 import { writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { designColourClaims, designTypographyFamilies } from "./design-validation.js";
-import { briefBrand } from "./essentials.js";
+import { briefBrand, urlLike, type Essentials } from "./essentials.js";
 import type { Board } from "./freeze.js";
 import { findProjectFormats, formatById, formatOfFile, isFormatFile, type BoardFormat } from "./formats.js";
-import { briefFaults, checkImpeccable, impeccable, renderFaults, type DismissedFloorFault, type FloorFault, type SourceFloor } from "./floor.js";
+import { briefFaults, checkImpeccable, formatNotes, impeccable, renderFaults, type DismissedFloorFault, type FloorFault, type SourceFloor } from "./floor.js";
 import { composition, deltaE, JND_DE76, toHex, typeRoles, type Composition } from "./metrics.js";
 import { readPiece } from "./pieces.js";
 import { Renderer, type Rendered } from "./render.js";
@@ -20,19 +20,27 @@ interface OutsideValue {
   previousRole?: string;
 }
 
-export interface DefaultCheckResult {
+interface CheckCoverage {
+  ran: string[];
+  skipped: Array<{ check: string; reason: string }>;
+}
+
+interface FloorCheckResult {
   file: string;
   format: string;
   png: string;
   pass: boolean;
   floor: FloorFault[];
   dismissed: DismissedFloorFault[];
+  checks: CheckCoverage;
+  designNotes: FloorFault[];
+}
+
+export interface DefaultCheckResult extends FloorCheckResult {
   /** The brief's requested strings, body size and images (essentials.ts). */
   brief: FloorFault[];
   briefApplied: boolean;
   outsideValues: OutsideValue[];
-  /** Source diagnostics about the frozen design system. */
-  designNotes: FloorFault[];
 }
 
 export interface CheckResult extends DefaultCheckResult {
@@ -161,9 +169,28 @@ function checkRendered(board: Board, r: Rendered, result: DefaultCheckResult, ap
   };
 }
 
-/** Collect floor findings for a piece without a frozen board. */
-export function floorOnly(file: string, fmt: string, r: Rendered, floor: FloorFault[], dismissed: DismissedFloorFault[]) {
-  return { file, format: fmt, png: r.png, pass: floor.length === 0, floor, dismissed, composition: composition(r) };
+function checkCoverage(fmt: BoardFormat, r: Rendered, detectorFailure: FloorFault | undefined, board: Board | null, campaign: boolean, consistency: boolean): CheckCoverage {
+  const checks: CheckCoverage = { ran: [], skipped: [] };
+  const record = (check: string, reason?: string) => {
+    if (reason) checks.skipped.push({ check, reason });
+    else checks.ran.push(check);
+  };
+  const floorOnly = board ? undefined : "floor-only mode has no frozen board";
+  record("source floor", detectorFailure ? `source detector failed: ${detectorFailure.detail}` : undefined);
+  checks.ran.push("text clipping", "text overlap", "text size and contrast", "font loading");
+  if (r.generatedCopy) record("CSS-generated copy geometry", `${r.generatedCopy} pseudo-element(s) with text have no DOM text range`);
+  record("print CTA treatment", fmt.kind === "print" ? undefined : "format is not declared print");
+  record("story safe zones", fmt.kind === "story" && fmt.safeZones ? undefined : "format declares no story safe zones");
+  record("brand name when visible", floorOnly);
+  const campaignSkipped = floorOnly ?? (campaign ? undefined : "piece has no board-campaign meta and --brief was not supplied");
+  const e: Essentials | undefined = board?.essentials;
+  const required = [...(e?.required ?? []), ...(e?.termsExempt?.includes(fmt.id) ? [] : e?.terms ?? [])];
+  record("campaign copy", campaignSkipped ?? (!required.some((copy) => fmt.id !== "hero" || !urlLike(copy)) ? "brief defines no required copy for this format" : undefined));
+  record("campaign body reading size", campaignSkipped ?? (!(e?.body.length && e.bodyFloor === "reading") ? "brief defines no body copy with a reading-size floor" : undefined));
+  record("campaign images", campaignSkipped ?? (!(e?.assetUse === "required" && e.assets.length) ? "brief defines no required images" : undefined));
+  record("frozen value drift", floorOnly);
+  record("frozen consistency and composition", floorOnly ?? (consistency ? undefined : "--consistency was not supplied"));
+  return checks;
 }
 
 export async function check(board: Board | null, files: string[], opts: {
@@ -171,7 +198,7 @@ export async function check(board: Board | null, files: string[], opts: {
   designs?: ReadonlyMap<number, string>;
 } = {}) {
   const renderer = opts.renderer ?? new Renderer();
-  const results: Array<DefaultCheckResult | CheckResult | ReturnType<typeof floorOnly>> = [];
+  const results: Array<DefaultCheckResult | CheckResult | (FloorCheckResult & { composition: Composition })> = [];
   try {
     const colours = opts.designs?.size ? await frozenColours(renderer, opts.designs) : new Map<number, Set<string>>();
     const currentDesign = board ? opts.designs?.get(board.version) : undefined;
@@ -188,18 +215,20 @@ export async function check(board: Board | null, files: string[], opts: {
       // Custom HTML is read at its native screen size, using the existing native-size text floor.
       const fmt = kit ?? { ...formatById("hero"), id: "html", height: r.height };
       const isDesignNote = (fault: FloorFault) => board && fault.rule === "design-system-font";
-      const designNotes = [...source.designNotes, ...source.floor.filter(isDesignNote)];
+      const designNotes = [...source.designNotes, ...source.floor.filter(isDesignNote), ...formatNotes(r, fmt)];
       const floor = [...source.floor.filter((fault) => !isDesignNote(fault)), ...renderFaults(r, fmt)];
       const format = kit?.id ?? basename(f);
+      const briefApplied = !!board && (!!opts.brief || Boolean(readPiece(f).campaign));
+      const checks = checkCoverage(fmt, r, findings.find((fault) => fault.rule === "impeccable-failed"), board, briefApplied, !!opts.consistency);
+      const base = { file: f, format, png: r.png, floor, dismissed: source.dismissed, checks, designNotes };
       if (!board) {
-        results.push(floorOnly(f, format, r, floor, source.dismissed));
+        results.push({ ...base, pass: floor.length === 0, composition: composition(r) });
         continue;
       }
-      const briefApplied = opts.brief || Boolean(readPiece(f).campaign);
       const brief = briefFaults(r, fmt, briefApplied ? board.essentials : undefined, briefBrand(board.brief, board.name));
       const result = {
-        file: f, format, png: r.png, pass: floor.length === 0 && brief.length === 0, floor, dismissed: source.dismissed, brief, briefApplied,
-        outsideValues: boardValueNotes(board, r, opts.previous ?? [], colours), designNotes,
+        ...base, pass: floor.length === 0 && brief.length === 0, brief, briefApplied,
+        outsideValues: boardValueNotes(board, r, opts.previous ?? [], colours),
       };
       results.push(opts.consistency ? checkRendered(board, r, result, colours.get(board.version)) : result);
     }

@@ -61,7 +61,7 @@ export function loadEssentials(project: string): Essentials {
   const offerText = [field(brief, "Subline"), field(brief, "Details"), field(brief, "Offer")].filter(Boolean).join(" ");
   const when = offerText.match(PRICE)?.[0] ?? offerText.match(DATE)?.[0];
   if (when) required.push(when);
-  const url = field(brief, "URL") ?? field(brief, "Address");
+  const url = field(brief, "URL") ?? field(brief, "Website") ?? field(brief, "Address");
   if (url) required.push(url);
   const body = [field(brief, "Subline")].filter((x): x is string => !!x);
   // The brief may release its images explicitly; otherwise supplied images are used.

@@ -14,6 +14,10 @@ export interface BoardFormat {
   /** Width in CSS px at which people see it: a phone feed or story is about 390 px wide (iPhone 12 to 16 viewport);
    * the banner and the website hero are seen at their native size. */
   seenWidth: number;
+  kind?: "web" | "social" | "print" | "story";
+  print?: { widthMm: number; heightMm: number; bleedMm: number };
+  /** Unsafe insets from the canvas edges, measured in canvas CSS pixels. */
+  safeZones?: { top: number; right: number; bottom: number; left: number };
 }
 
 /** Apple Human Interface Guidelines: 11 pt is the smallest text size; on iOS 1 pt = 1 CSS px. */
@@ -35,13 +39,13 @@ export function minTextPx(f: BoardFormat): number {
 }
 
 export const FORMATS: BoardFormat[] = [
-  { id: "hero", label: "Website hero", width: 1440, height: 900, source: "first screen of a 1440x900 laptop viewport", seenWidth: 1440 },
-  { id: "post", label: "Square post 1080x1080", width: 1080, height: 1080, source: "Instagram / LinkedIn square feed image", seenWidth: 390 },
-  { id: "story", label: "Story 1080x1920", width: 1080, height: 1920, source: "Instagram / TikTok story, 9:16", seenWidth: 390 },
-  { id: "link", label: "Link ad 1200x628", width: 1200, height: 628, source: "Facebook / LinkedIn link-ad image", seenWidth: 390 },
-  { id: "mrec", label: "Banner 300x250", width: 300, height: 250, source: "IAB medium rectangle", seenWidth: 300 },
-  { id: "poster", label: "A4 poster", width: 1240, height: 1754, source: "ISO 216 A4 (210x297 mm) at 150 dpi", seenWidth: 390 },
-  { id: "og", label: "OG image 1200x630", width: 1200, height: 630, source: "Open Graph share image", seenWidth: 390 },
+  { id: "hero", label: "Website hero", width: 1440, height: 900, source: "first screen of a 1440x900 laptop viewport", seenWidth: 1440, kind: "web" },
+  { id: "post", label: "Square post 1080x1080", width: 1080, height: 1080, source: "Instagram / LinkedIn square feed image", seenWidth: 390, kind: "social" },
+  { id: "story", label: "Story 1080x1920", width: 1080, height: 1920, source: "Instagram / TikTok story, 9:16", seenWidth: 390, kind: "story" },
+  { id: "link", label: "Link ad 1200x628", width: 1200, height: 628, source: "Facebook / LinkedIn link-ad image", seenWidth: 390, kind: "social" },
+  { id: "mrec", label: "Banner 300x250", width: 300, height: 250, source: "IAB medium rectangle", seenWidth: 300, kind: "web" },
+  { id: "poster", label: "A4 poster", width: 1240, height: 1754, source: "ISO 216 A4 (210x297 mm) at 150 dpi", seenWidth: 390, kind: "print" },
+  { id: "og", label: "OG image 1200x630", width: 1200, height: 630, source: "Open Graph share image", seenWidth: 390, kind: "social" },
 ];
 
 export const KIT_IDS = FORMATS.map((f) => f.id);
@@ -53,7 +57,24 @@ const projectFormatsSchema = z.array(z.object({
   height: z.number().int().positive(),
   seenWidth: z.number().int().positive(),
   source: z.string().trim().min(1),
-}).refine((f) => f.seenWidth <= f.width, "seenWidth must be at most width"))
+  kind: z.enum(["web", "social", "print", "story"]).optional(),
+  print: z.object({
+    widthMm: z.number().positive(),
+    heightMm: z.number().positive(),
+    bleedMm: z.number().nonnegative(),
+  }).optional(),
+  safeZones: z.object({
+    top: z.number().nonnegative().default(0),
+    right: z.number().nonnegative().default(0),
+    bottom: z.number().nonnegative().default(0),
+    left: z.number().nonnegative().default(0),
+  }).optional(),
+}).refine((f) => f.seenWidth <= f.width, "seenWidth must be at most width")
+  .refine((f) => !f.print || f.kind === "print", "print dimensions require kind print")
+  .refine((f) => !f.safeZones || f.kind === "story", "safeZones require kind story")
+  .refine((f) => !f.safeZones || (
+    f.safeZones.left + f.safeZones.right < f.width && f.safeZones.top + f.safeZones.bottom < f.height
+  ), "safeZones must leave a non-empty safe area"))
   .nonempty().refine((formats) => new Set(formats.map((f) => f.id)).size === formats.length, "format ids must be unique");
 
 export function loadProjectFormats(project: string): BoardFormat[] {

@@ -1,6 +1,6 @@
 {
   "name": "briefatto-board",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Versioned design guides and visual checks for coding agents.",
   "keywords": [
     "design-system",
@@ -31,6 +31,7 @@
     "NOTICE",
     "LICENSE",
     "THIRD_PARTY.md",
+    "CHANGELOG.md",
     "examples/"
   ],
   "engines": {

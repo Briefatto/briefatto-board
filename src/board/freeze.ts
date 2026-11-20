@@ -1,19 +1,22 @@
 // Freeze the agent's guide beside the chosen sample pages and their rendered values.
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempDisposableSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { loadAdoption, localAdoptionAssets, withAdoptedPages } from "./adoption.js";
-import { readConstraints } from "./constraints.js";
+import { readConstraintSources } from "./constraints.js";
 import { designMd, describeChange } from "./design.js";
-import { designHash, stampDesign, unsignedDesign, validateDesign } from "./design-validation.js";
-import { FORMATS, formatFiles, formatOfFile, loadProjectFormats, type BoardFormat } from "./formats.js";
+import { briefExpectations, computedSample, designHash, stampDesign, unsignedDesign, validateDesign, type SourceQuote } from "./design-validation.js";
+import { FORMATS, formatById, formatFiles, formatOfFile, isFormatFile, loadProjectFormats, type BoardFormat } from "./formats.js";
+import { briefFaults } from "./floor.js";
 import { composition, deltaE, JND_DE76, palette, toHex, typeRoles, type Composition, type PaletteEntry, type TypeRole } from "./metrics.js";
 import type { Rendered } from "./render.js";
 import { loadEssentials, type Essentials } from "./essentials.js";
 import { portableFontFaces, portableImages, type BriefAsset } from "./portable.js";
+import { outputFiles, readPiece } from "./pieces.js";
 import { Renderer } from "./render.js";
 import { writeStylescape } from "./sheet.js";
-import { publishBoard, versionLabel } from "./versions.js";
+import { publishBoard, readBoard, versionLabel } from "./versions.js";
 import { hashLocalAssets, SOURCE_ASSETS_FILE } from "./source-assets.js";
 
 export { designMd };
@@ -167,9 +170,11 @@ export function tokensCss(b: Board): string {
 }
 
 type BoardSources = { directionDir: string; project?: never } | { project: string; directionDir?: never };
+type SampleRenders = Array<Parameters<typeof boardFromRenders>[2][number] & { boardFormat: BoardFormat }>;
+const projectPath = (project: string, file: string) => relative(project, file).replace(/\\/g, "/");
 
 async function renderAdoptedPages(project: string, samplesDir: string, renderer: Renderer,
-  renders: Parameters<typeof boardFromRenders>[2], localAssets?: Set<string>): Promise<Board["direction"]> {
+  renders: SampleRenders, localAssets?: Set<string>): Promise<Board["direction"]> {
   return withAdoptedPages(project, loadAdoption(project), localAssets, async (pages) => {
     for (const { id, source, website, file, origin, root } of pages) {
       const html = join(samplesDir, id + ".html");
@@ -180,14 +185,14 @@ async function renderAdoptedPages(project: string, samplesDir: string, renderer:
       const r = localAdoptionAssets(rendered, origin, root);
       const { width, height } = r;
       const canvas = { id, label: source, width, height, seenWidth: width, source };
-      renders.push({ file: file ?? html, fmt: id, source, canvas, r });
+      renders.push({ file: file ?? html, fmt: id, source, canvas, boardFormat: canvas, r });
     }
     return { id: "existing-site", title: "Existing site", text: "" };
   });
 }
 
 async function renderDirectionPages(directionDir: string, project: string, samplesDir: string, renderer: Renderer,
-  renders: Parameters<typeof boardFromRenders>[2], collectStyles: boolean, localAssets?: Set<string>): Promise<Board["direction"]> {
+  renders: SampleRenders, collectStyles: boolean, localAssets?: Set<string>): Promise<Board["direction"]> {
   const formats = loadProjectFormats(project);
   const samples = formatFiles(directionDir, { formats }).map((file) => ({ file, fmt: formatOfFile(file, formats) }));
   if (!samples.length) throw new Error("No sample HTML in " + directionDir + ".");
@@ -206,22 +211,101 @@ async function renderDirectionPages(directionDir: string, project: string, sampl
   for (const { file, fmt } of samples) {
     const r = await renderer.render(file, fmt, join(samplesDir, fmt.id + ".png"), collectStyles, localAssets);
     copyFileSync(file, join(samplesDir, fmt.id + ".html"));
-    renders.push({ file, fmt: fmt.id, canvas: formats === FORMATS ? undefined : fmt, r });
+    renders.push({ file, fmt: fmt.id, canvas: formats === FORMATS ? undefined : fmt, boardFormat: fmt, r });
   }
   return { id: basename(directionDir), title, text };
+}
+
+function directionBrief(project: string): string {
+  const path = join(project, "brief.md");
+  return existsSync(path) ? readFileSync(path, "utf8") : "";
+}
+
+function constraintSources(project: string, directionDir: string | undefined, previous: Board | undefined): SourceQuote[] {
+  const quotes = new Map((previous?.constraints ?? []).map((value, index) =>
+    [value, { value, source: `board/board.json constraints[${index}]` }]));
+  if (directionDir) {
+    for (const { value, line } of readConstraintSources(join(project, "refs", "notes.md"))) {
+      quotes.set(value, { value, source: `refs/notes.md:${line}` });
+    }
+  }
+  return [...quotes.values()];
+}
+
+function guideInputs(project: string, board: Pick<Board, "brief" | "essentials">, renders: SampleRenders, constraints: SourceQuote[], brief: string | undefined) {
+  return {
+    brief: briefExpectations(board, constraints, brief),
+    samples: renders.map(({ file, source, r }) => computedSample(source ?? projectPath(project, file), r)),
+  };
+}
+
+async function campaignCopyFindings(project: string, directionDir: string | undefined, essentials: Essentials,
+  renders: SampleRenders, renderer: Renderer) {
+  const findings: Array<{ source: string; rule: string; detail: string }> = [];
+  if (!essentials.required.length && !essentials.terms.length) return findings;
+  const copyOnly = { ...essentials, body: [], assets: [] };
+  const inspect = (source: string, r: Rendered, fmt: BoardFormat) => {
+    for (const { rule, detail } of briefFaults(r, fmt, copyOnly)) {
+      if (rule === "essential-missing" || rule === "term-missing") findings.push({ source, rule, detail: `${detail} from ${essentials.source}` });
+    }
+  };
+  const campaigns = new Set<string>();
+  for (const { file, source, boardFormat, r } of renders) {
+    const { campaign } = readPiece(file);
+    if (campaign) campaigns.add(campaign);
+    if (directionDir || campaign) inspect(source ?? projectPath(project, file), r, boardFormat);
+  }
+  const outputs = outputFiles(join(project, "outputs")).filter((file) => {
+    const { campaign } = readPiece(file);
+    return campaign !== undefined && (!campaigns.size || campaigns.has(campaign));
+  });
+  if (outputs.length) {
+    const formats = loadProjectFormats(project);
+    using tmp = mkdtempDisposableSync(join(tmpdir(), "briefatto-campaign-"));
+    for (const [index, file] of outputs.entries()) {
+      const fmt = isFormatFile(file, formats) ? formatOfFile(file, formats) : undefined;
+      const r = await renderer.render(file, fmt, join(tmp.path, `${index}.png`));
+      inspect(projectPath(project, file), r, fmt ?? { ...formatById("hero"), id: "html", height: r.height });
+    }
+  }
+  return findings;
+}
+
+/** Render a read-only preview of the values and wording the guide can claim. */
+export async function previewFreeze(opts: BoardSources & { boardDir: string; renderer?: Renderer }) {
+  const { boardDir, directionDir } = opts;
+  const project = opts.project ?? dirname(boardDir);
+  const previous = existsSync(join(boardDir, "board.json")) ? readBoard(boardDir) : undefined;
+  const constraints = constraintSources(project, directionDir, previous);
+  const brief = directionDir ? directionBrief(project) : undefined;
+  const essentials = loadEssentials(project);
+  using tmp = mkdtempDisposableSync(join(tmpdir(), "briefatto-freeze-"));
+  const renderer = opts.renderer ?? new Renderer();
+  const renders: SampleRenders = [];
+  try {
+    if (directionDir) await renderDirectionPages(directionDir, project, tmp.path, renderer, renders, true);
+    else await renderAdoptedPages(project, tmp.path, renderer, renders);
+    const board = { brief, essentials };
+    const inputs = guideInputs(project, board, renders, constraints, brief);
+    const campaignFindings = await campaignCopyFindings(project, directionDir, essentials, renders, renderer);
+    const { source, required, terms, termsExempt } = essentials;
+    return { ...inputs, campaignRequirements: { source, required, terms, termsExempt }, campaignFindings };
+  } finally {
+    if (!opts.renderer) await renderer.close();
+  }
 }
 
 /** Render the selected direction or site into a staged board. */
 export async function renderBoard(opts: BoardSources & {
   boardDir: string; name: string; renderer?: Renderer; version?: number; note?: string;
-  constraints?: string[]; previous?: Board; extract?: boolean; authoredDesign?: string; onValidated?: () => void; currentBoardDir?: string;
+  constraints?: SourceQuote[]; previous?: Board; extract?: boolean; authoredDesign?: string; onValidated?: () => void; currentBoardDir?: string;
 }): Promise<Board> {
   const { directionDir, boardDir, name } = opts;
   const project = opts.project ?? resolve(directionDir!, "..", "..");
   const samplesDir = join(boardDir, "samples");
   mkdirSync(samplesDir, { recursive: true });
   const renderer = opts.renderer ?? new Renderer();
-  const renders: Parameters<typeof boardFromRenders>[2] = [];
+  const renders: SampleRenders = [];
   const localAssets = opts.currentBoardDir ? new Set<string>() : undefined;
   try {
     const direction = directionDir
@@ -230,17 +314,22 @@ export async function renderBoard(opts: BoardSources & {
     const board = boardFromRenders(name, direction, renders, boardDir);
     board.version = opts.version ?? board.version;
     board.note = opts.note ?? board.note;
-    if (directionDir) {
-      const briefPath = join(project, "brief.md");
+    const brief = directionDir ? directionBrief(project) : undefined;
+    if (brief !== undefined) {
       board.essentials = loadEssentials(project);
-      board.brief = existsSync(briefPath) ? readFileSync(briefPath, "utf8").trim() : "";
+      board.brief = brief.trim();
       if (board.essentials.assets.length) board.briefAssets = portableImages(project, board.essentials.assets);
     }
     if (board.fontFaces) board.fontFaces = portableFontFaces(project, board.fontFaces);
-    if (opts.constraints?.length) board.constraints = opts.constraints;
+    if (opts.constraints?.length) board.constraints = opts.constraints.map(({ value }) => value);
     board.changeSummary = describeChange(opts.previous, board);
+    if (opts.currentBoardDir) {
+      const missing = await campaignCopyFindings(project, directionDir, board.essentials ?? loadEssentials(project), renders, renderer);
+      if (missing.length) throw new Error(`FAIL campaign copy\n${missing.map(({ source, rule, detail }) => `  ${source}: ${rule}: ${detail}.`).join("\n")}`);
+    }
     if (opts.authoredDesign !== undefined) {
-      const findings = await validateDesign(opts.authoredDesign, project, board, renders.map(({ r }) => r), renderer, localAssets);
+      const inputs = guideInputs(project, board, renders, opts.constraints ?? [], brief);
+      const findings = await validateDesign(opts.authoredDesign, project, inputs, renderer, localAssets);
       if (findings.length) throw new Error(`FAIL DESIGN.md\n${findings.map(({ rule, detail }) => `  ${rule}: ${detail}`).join("\n")}`);
       opts.onValidated?.();
       board.designHash = designHash(opts.authoredDesign);
@@ -285,8 +374,7 @@ export function freeze(opts: BoardSources & {
       }
       if (!authoredDesign.trim()) throw new Error("FAIL DESIGN.md\n  missing-guide: The project-root DESIGN.md is empty.");
     }
-    const notes = opts.directionDir ? readConstraints(join(project, "refs", "notes.md")) : [];
-    const constraints = uniq([...(previous?.constraints ?? []), ...notes]);
+    const constraints = constraintSources(project, opts.directionDir, previous);
     return renderBoard({ ...opts, boardDir: stage, version, constraints, previous, authoredDesign, currentBoardDir: opts.boardDir });
   }, {
     finishStage: async (stage, b) => {
