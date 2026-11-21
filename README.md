@@ -90,6 +90,18 @@ This is what the CLI printed on the Plumb example, after a brand change: a stale
   </picture>
 </p>
 
+## Design principles
+
+We built Briefatto Board on one split: taste in the model, proof in code.
+
+- **Taste belongs to the model.** Your agent's model makes every aesthetic call and improves every year. We ship no taste rubric: one would cap the model and become its target.
+- **The floor belongs to code.** `board check` fails what is provably wrong: text that is clipped, off the canvas, overlapping or too small where it is seen, fonts that never loaded, WCAG contrast, Impeccable's anti-patterns. Exported PNG and PDF files match their source.
+- **One brand for every agent.** Claude Code, Codex and Cursor read the same frozen DESIGN.md, months and sessions apart.
+- **Pictures carry intent.** Designers never closed the gap with words. Agents get references, directions drawn as pictures and a client's pick.
+- **The repository is the brand system.** DESIGN.md lives in Git, so review, pull requests, permissions and history work on it. `board freeze`, `board diff` and `board status` add brand versions.
+
+Read the full [design principles](docs/PRINCIPLES.md) and [how it works](docs/ARCHITECTURE.md).
+
 ### Works with any coding agent
 
 Briefatto Board is a command-line tool and a skill file. It works with any coding agent that reads `AGENTS.md` and runs shell commands.
