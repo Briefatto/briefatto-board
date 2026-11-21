@@ -1,0 +1,16 @@
+{
+  "name": "briefatto",
+  "description": "Briefatto plugins for coding agents",
+  "owner": { "name": "Briefatto" },
+  "plugins": [
+    {
+      "name": "briefatto-board",
+      "source": "./",
+      "description": "Versioned DESIGN.md for coding agents: one design guide read before visual work, plus design checks.",
+      "version": "0.1.4",
+      "license": "Apache-2.0",
+      "homepage": "https://briefatto.com",
+      "keywords": ["design-md", "design-system", "design-lint"]
+    }
+  ]
+}

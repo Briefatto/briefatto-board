@@ -1,0 +1,11 @@
+{
+  "name": "briefatto-board",
+  "version": "0.1.4",
+  "description": "Versioned DESIGN.md for coding agents: one design guide read before visual work, plus checks for clipped text, fonts, contrast and AI-design tells.",
+  "author": { "name": "Briefatto" },
+  "homepage": "https://briefatto.com",
+  "repository": "https://github.com/Briefatto/briefatto-board",
+  "license": "Apache-2.0",
+  "keywords": ["design-md", "design-system", "design-lint", "brand-guidelines", "frontend"],
+  "skills": ["./skill/"]
+}
