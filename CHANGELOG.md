@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5
+
+- Add design principles and an architecture guide, name every supported agent (Claude Code and the agents that read AGENTS.md), link the blind test and the DESIGN.md gallery, and add the Claude Code plugin install.
+
 ## 0.1.4
 
 - Document skills.sh installation and improve npm metadata for coding-agent discovery.

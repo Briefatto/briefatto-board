@@ -1,6 +1,6 @@
 {
   "name": "briefatto-board",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Versioned DESIGN.md for Claude Code, Codex and Cursor: one design guide agents read before visual work, plus checks for clipped text, fonts, contrast and AI-design tells.",
   "keywords": [
     "design-md",
