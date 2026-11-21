@@ -1,5 +1,5 @@
 # Briefatto Board
-One versioned design guide (DESIGN.md) that Claude Code, Codex, Cursor and every other coding agent reads before visual work. `npx briefatto-board install` adds a pointer to AGENTS.md and CLAUDE.md, and each rendered piece is checked against a quality floor.
+One versioned design guide (DESIGN.md) that Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf and every other coding agent reads before visual work. `npx briefatto-board install` adds a pointer to AGENTS.md and CLAUDE.md, and each rendered piece is checked against a quality floor.
 
 ```sh
 npx briefatto-board install
@@ -20,7 +20,7 @@ claude plugin install briefatto-board@briefatto
 
 **Blind-tested.** On a real open-source site, all four blind judges ranked Briefatto Board's work first, ahead of Impeccable, Taste Skill and Hallmark. [See every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/).
 
-[Adopt an existing site or start a brand from a brief](#start). [Guides for Claude Code, Cursor, Codex and more](https://briefatto.com/guides/). [39 ready DESIGN.md files for popular brands](https://github.com/Briefatto/design-md-gallery).
+[Adopt an existing site or start a brand from a brief](#start). [Guides for Claude Code, Codex, Cursor, Copilot, Gemini CLI and more](https://briefatto.com/guides/). [39 ready DESIGN.md files for popular brands](https://github.com/Briefatto/design-md-gallery).
 
 <p align="center">
   <picture>
@@ -96,7 +96,7 @@ A design system's first reader is now a coding agent. We built Briefatto Board f
 
 - **Taste belongs to the model.** Your agent's model makes every aesthetic call and improves every year. We ship no taste rubric: one would cap the model and become its target.
 - **The floor belongs to code.** `board check` fails what is provably wrong: text that is clipped, off the canvas, overlapping or too small where it is seen, fonts that never loaded, contrast below WCAG, Impeccable's anti-patterns. Exported PNG and PDF files match their source.
-- **One brand for every agent.** Claude Code, Codex and Cursor read the same frozen DESIGN.md, months and sessions apart, and after a brand change `board status` names every stale piece.
+- **One brand for every agent.** Claude Code, Codex, Cursor, Copilot and Gemini CLI read the same frozen DESIGN.md, months and sessions apart, and after a brand change `board status` names every stale piece.
 - **Pictures carry intent.** Designers never closed the intent gap with words. Agents get references, directions drawn as pictures and a client's pick.
 - **The repository is the brand system.** DESIGN.md lives in Git, so review, pull requests, permissions and history work on it. `board freeze`, `board diff` and `board status` add brand versions.
 
@@ -104,7 +104,7 @@ Read the full [design principles](docs/PRINCIPLES.md) and [how it works](docs/AR
 
 ### Works with any coding agent
 
-Briefatto Board is a command-line tool and a skill file. It works with any coding agent that reads `AGENTS.md` and runs shell commands.
+Briefatto Board is a command-line tool and a skill file. It works with any coding agent that reads `AGENTS.md` and runs shell commands. That includes Claude Code (through `CLAUDE.md`) and the agents that read `AGENTS.md`: Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf, Zed, OpenCode, Amp, Jules, Devin, Aider, goose, Warp, Junie, Roo Code, Kilo Code, Factory and Augment Code.
 
 ## Made with Briefatto Board
 

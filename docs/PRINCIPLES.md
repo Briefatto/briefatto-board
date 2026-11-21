@@ -55,7 +55,7 @@ Each check is objective and matters for every model that will ever exist, since 
 
 
 
-`board freeze` records the brand's source wording and the exact styles from a fresh render, validates the written guide against them, and stamps a new version. Claude Code, Codex and Cursor read that DESIGN.md before any visual work. Each piece declares the version it was made under, so after a brand change `board status` names every stale piece and `board diff` shows what moved.
+`board freeze` records the brand's source wording and the exact styles from a fresh render, validates the written guide against them, and stamps a new version. Claude Code, Codex, Cursor, Copilot and Gemini CLI read that DESIGN.md before any visual work. Each piece declares the version it was made under, so after a brand change `board status` names every stale piece and `board diff` shows what moved.
 
 ## The repository is the brand system
 

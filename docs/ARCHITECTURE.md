@@ -12,7 +12,7 @@ A design layer for agents has two jobs that pull in opposite directions. It has 
 
 **The CLI.** `npx briefatto-board` runs `install`, `adopt`, `refs`, `directions`, `freeze`, `check`, `kit`, `status`, `log` and `diff`. Every command that looks at a design renders it in headless Chromium through Playwright and reads computed styles, text geometry, font loading and contrast from the live page, on your machine.
 
-**Install.** `board install` copies the skill and its launcher into `.claude/skills/briefatto-board/`, adds the package as a dev dependency, and writes a block between `<!-- briefatto-board:start -->` and `<!-- briefatto-board:end -->` into `AGENTS.md` and `CLAUDE.md`. Before a freeze, the block points the agent at the skill. After a freeze it carries standing rules: read `DESIGN.md` before any visual work, send brand changes through `board freeze`, and run `board check` on every piece before handing it over. Claude Code, Codex, Cursor and every agent that reads `AGENTS.md` pick them up.
+**Install.** `board install` copies the skill and its launcher into `.claude/skills/briefatto-board/`, adds the package as a dev dependency, and writes a block between `<!-- briefatto-board:start -->` and `<!-- briefatto-board:end -->` into `AGENTS.md` and `CLAUDE.md`. Before a freeze, the block points the agent at the skill. After a freeze it carries standing rules: read `DESIGN.md` before any visual work, send brand changes through `board freeze`, and run `board check` on every piece before handing it over. Claude Code, Codex, Cursor, Copilot, Gemini CLI, Windsurf and every agent that reads `AGENTS.md` pick them up.
 
 **DESIGN.md and its generated block.** The guide has two authors. The agent writes the prose, which works as the handoff from one designer to the next: it names each recurring part by its job, says how it is built and how it recomposes on each canvas. `board freeze` writes what can be measured into a block between `<!-- briefatto-board:generated begin -->` and `<!-- briefatto-board:generated end -->`. For a brand started from a brief, that block holds the brand facts and campaign copy with the source of every line, and the client's musts and must-nots, quoted verbatim. For every sample it holds a table of each text role's font stack, size, weight, style and colour, plus every painted colour. Later freezes replace the block in place and leave the prose to the agent.
 
@@ -112,7 +112,7 @@ The freeze fails. The report gives the line, the claimed value and the nearest v
 
 ### Which agents does Briefatto Board work with?
 
-Any coding agent that reads `AGENTS.md` and runs shell commands, including Claude Code, Codex and Cursor. The board is a skill file and a CLI, and the brand lives in plain files in the repository, so every agent reads the same frozen guide.
+Any coding agent that reads `AGENTS.md` or `CLAUDE.md` and runs shell commands: Claude Code (through CLAUDE.md) and the agents that read AGENTS.md: Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf, Zed, OpenCode, Amp, Jules, Devin, Aider, goose, Warp, Junie, Roo Code, Kilo Code, Factory and Augment Code. The board is a skill file and a CLI, and the brand lives in plain files in the repository, so every agent reads the same frozen guide.
 
 
 More: [design principles](PRINCIPLES.md) · [the intent gap essay](https://briefatto.com/guides/intent-gap-design-principles/) · [design infrastructure for AI agents](https://briefatto.com/guides/design-infrastructure-for-ai-agents/)
