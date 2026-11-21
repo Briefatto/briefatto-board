@@ -4,9 +4,9 @@ Briefatto Board is a skill that tells a coding agent how to run a design process
 
 ## One boundary
 
-A design layer for agents has two jobs that pull in opposite directions. It has to leave room for taste, which lives in the model and improves every year. It also has to hold a brand fixed across sessions and agents for months on end, which only a program does reliably. We drew a hard line between those jobs. Judgement runs in the agent, while everything that can be measured or proven runs in code, on the rendered output, and lands in files in the repository. The companion [design principles](PRINCIPLES.md) argue for where the line sits; this piece shows how it is built.
+A design layer for agents has two jobs that pull in opposite directions. It has to leave room for taste, which lives in the model and improves every year. It also has to hold a brand fixed across sessions and agents for months on end, which only a program does reliably. We drew a hard line between those jobs. Judgement runs in the agent, while everything that can be measured or proven runs in code, on the rendered output, and lands in files in the repository. Every piece an agent makes crosses that line twice: the frozen guide constrains it before it is drawn, and code checks its render after. The [design principles](PRINCIPLES.md) argue for the line; what follows is how it is built.
 
-## The layers
+## The parts
 
 **The skill.** `SKILL.md` is the protocol the agent follows. It tells the agent to read a frozen DESIGN.md before any visual work, lays out both entries step by step, and marks the places where the agent stops for a person, such as showing the reference sheet before drawing a single direction.
 
@@ -76,7 +76,7 @@ A design layer for agents has two jobs that pull in opposite directions. It has 
 
 Taste stays in the model because the model improves and a rule list does not. We ship no taste rubric, since a hard score becomes the target and the work bends toward it. The deep layer of the brand, meaning composition, hierarchy and how a device recomposes on a tall canvas, is carried by the chosen samples and the prose, and the model reads them whole.
 
-Measured values sit in a generated block because prose drifts and a render does not. The agent writes how the brand works. The board writes what the brand is, read from Chromium's computed styles, and validation binds the two together.
+Measured values sit in a generated block because only a render reports exactly what was drawn. The agent writes how the brand works. The board writes what the brand is, read from Chromium's computed styles, and validation binds the two together.
 
 The client's words are stored verbatim, as fenced quotes for approvals and constraints. Code keeps them exact and carries them forward, and the model interprets them.
 
@@ -86,7 +86,7 @@ Versions live in files because Git is already the collaboration layer. A brand c
 
 Status reads a declaration because redrawing is a decision. A piece states its version, the board reports, the agent redraws, and the floor checks the result before it counts as current.
 
-In a blind test on one real open-source project, Issue Composer, all four blind judges ranked the Briefatto Board kit first overall, ahead of Impeccable, Taste Skill and Hallmark. [See every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/).
+In a blind test on the open-source project Issue Composer, all four judges ranked the Briefatto Board kit first overall, ahead of Impeccable, Taste Skill and Hallmark. [See every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/).
 
 ## Questions and answers
 

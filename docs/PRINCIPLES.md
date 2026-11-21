@@ -6,18 +6,18 @@ We built the board on three decisions: taste belongs to the model, the floor bel
 
 ## The problem is intent
 
-Every agent designs now, and drawing a good page is solved. The same agent drew a good landing page today and a different good one tomorrow, from the same brief, and neither of them was the brand. What went missing was one person's intent, kept intact from the idea to the pixels and through every session that came after.
+Every agent designs now, and drawing a good page is solved. Agents take an idea straight to running software with no canvas in between, so a design system's first reader is now an agent, which executes it on every piece. The same agent drew a good landing page today and a different good one tomorrow, from the same brief, and neither of them was the brand. What went missing was one person's intent, kept intact from the idea to the pixels and through every session that came after.
 
-On its way to the screen, intent passes through four layers and loses something at each handover.
+On its way to the screen, intent passes through four steps and loses something at each handover.
 
-| Layer | What it holds | Loss on the way in |
+| Step | What it holds | Loss on the way in |
 | :--- | :--- | :--- |
 | Human intent | What the person sees in their head | |
 | Design brief | That intent put into words | Loss of expression |
 | Agent's interpretation | The brief as the model reads it | Loss of understanding |
 | Rendered design | The pixels that ship | Loss in execution |
 
-Then the next session starts from the brief and draws something else. That loss, continuity, compounds with every session, and it is why we call today's AI design a slot machine. Each pull can pay out a great page, nothing ties one pull to the next, and a team that wants a brand is left pulling again and choosing by hand. A better prompt only reaches the loss of expression.
+Then the next session starts from the brief and draws something else. That loss, continuity, compounds with every session, and it is why we call today's AI design a slot machine. Each pull can pay out a great page, nothing ties one pull to the next, and anyone who wants a brand is left pulling again and choosing by hand. A better prompt only reaches the loss of expression, and a better model still starts every session from zero. Making agents better designers leaves continuity where it was.
 
 Designers never closed this gap with better words. They pinned up references, showed options as pictures, and waited for the client to put a finger on one and say "this one". Briefatto Board makes that practice the protocol an agent runs.
 
@@ -53,18 +53,18 @@ Each check is objective and matters for every model that will ever exist, since 
 
 ## One brand, held across every agent
 
-We hold the brand fixed, understood the same way by every agent and every session, month after month.
+
 
 `board freeze` records the brand's source wording and the exact styles from a fresh render, validates the written guide against them, and stamps a new version. Claude Code, Codex and Cursor read that DESIGN.md before any visual work. Each piece declares the version it was made under, so after a brand change `board status` names every stale piece and `board diff` shows what moved.
 
 ## The repository is the brand system
 
-DESIGN.md is a file in your repo, and your team already runs the best collaboration system ever built for files. In Git, review, pull requests, permissions and history apply to the brand exactly as they apply to code.
+DESIGN.md is a file in your repo, under the collaboration system code already runs on. In Git, review, pull requests, permissions and history apply to the brand exactly as they apply to code.
 
 A brand change becomes a pull request. The reviewer reads the new guide, `board diff` shows what moved, and `board log` records who decided and when. `board freeze`, `board diff` and `board status` add brand versions on top of the workflow you already trust, and the brand travels with the code it styles: clone the repo and you have the brand.
 
 ## Proof
 
-In a blind test on one real open-source project, Issue Composer, all four blind judges ranked the Briefatto Board kit first overall, ahead of Impeccable, Taste Skill and Hallmark. Our kit carried no taste rubric. The model made every call, while the board held the brand and its floor caught what code can prove.
+In a blind test on the open-source project Issue Composer, all four judges ranked the Briefatto Board kit first overall, ahead of Impeccable, Taste Skill and Hallmark. Our kit carried no taste rubric. The model made every call, while the board held the brand and its floor caught what code can prove.
 
 [See every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/).
