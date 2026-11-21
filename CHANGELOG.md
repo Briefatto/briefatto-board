@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4
+
+- Document skills.sh installation and improve npm metadata for coding-agent discovery.
+
 ## 0.1.3
 
 - Verify final PNG and PDF deliverables by decoding and comparing their pixels with the editable HTML. Record file hashes and comparison results in the check and kit receipts.

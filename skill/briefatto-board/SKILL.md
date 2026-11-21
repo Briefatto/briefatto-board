@@ -1,15 +1,15 @@
 ---
 name: briefatto-board
-description: Adopt an existing website or develop a brand from references, freeze its design into DESIGN.md, and use that guide across sessions.
+description: Use before any UI, layout, copy-on-image or brand work to read and follow the project's DESIGN.md. Adopt an existing website or develop a brand from references, freeze the design guide, and check rendered pieces.
 ---
 
 # Design board
 
-The installer places this skill under `.claude/skills/` for Claude Code. Other coding agents read the same file via the pointer in `AGENTS.md`.
+`npx briefatto-board install` places this skill under `.claude/skills/` and adds pointers in `AGENTS.md` and `CLAUDE.md`. The skills CLI installs it for the selected agents.
 
 If the project has a frozen `DESIGN.md`, read it before visual work and go straight to making pieces.
 
-Commands shown as `board` use `node .claude/skills/briefatto-board/board.mjs` from the project root. With the npm install, you can also use `npx briefatto-board`. If a render reports missing Playwright Chromium, run the install command it prints and retry.
+Commands shown as `board` use `npx briefatto-board` from the project root. If you used the installer from a local Board checkout, run `node .claude/skills/briefatto-board/board.mjs`. If a render reports missing Playwright Chromium, run the install command it prints and retry.
 
 Write and edit HTML, JSON, Markdown, and scripts with your file tool. Run saved scripts as files. Keep commands compatible with the active shell, including PowerShell on Windows. Quote paths containing spaces and pass globs in quotes for the board to expand. Avoid long heredocs and quoted one-liners that generate files.
 

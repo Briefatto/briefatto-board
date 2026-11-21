@@ -1,11 +1,24 @@
+# Briefatto Board
+One versioned design guide (DESIGN.md) that Claude Code, Codex, Cursor and every other coding agent reads before visual work. `npx briefatto-board install` adds a pointer to AGENTS.md and CLAUDE.md, and each rendered piece is checked against a quality floor.
+
+```sh
+npx briefatto-board install
+```
+
+You can also install the skill through skills.sh.
+
+```sh
+npx skills add Briefatto/briefatto-board
+```
+
+[Adopt an existing site or start a brand from a brief](#start).
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/banner-dark.png">
     <img src=".github/assets/banner-light.png" width="830" alt="Briefatto Board: one design guide for every agent session">
   </picture>
 </p>
-
-<p align="center"><strong>Briefatto Board gives coding agents one versioned design guide to read before visual work.</strong></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/briefatto-board"><img src="https://img.shields.io/npm/v/briefatto-board?style=flat-square&color=2538E8&label=npm" alt="npm version"></a>
@@ -25,11 +38,7 @@ Your brand lives in one design guide, `DESIGN.md`, and Briefatto Board keeps it 
 
 ## Start
 
-```sh
-npx briefatto-board install
-```
-
-This adds Briefatto Board to your project and installs the skill your agent reads. Below, `board` stands for `npx briefatto-board`.
+Below, `board` stands for `npx briefatto-board`.
 
 **You already have a site → adopt.** Briefatto Board captures your pages, your agent writes the design guide (`DESIGN.md`) from what it sees, and you freeze it as v1.
 
