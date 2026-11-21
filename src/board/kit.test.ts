@@ -43,7 +43,7 @@ test("kit stamps and checks launch deliverables while leaving review proofs and 
   const piece = (copy: string, purpose = "") => [
     '<!doctype html><html lang="en"><head><meta charset="utf-8">',
     '<meta name="board-version" content="v1">', purpose, '<title>Workbench</title></head>',
-    '<body style="margin:0;background:#0e1a2b;color:#fff;font:20px Georgia"><main style="margin:32px">',
+    '<body style="margin:0;background:#0e1a2b;color:#fff;font:20px serif"><main style="margin:32px">',
     `<h1>Workbench</h1><p>${copy}</p></main></body></html>`,
   ].join("\n");
   const preview = piece("File example pending.");
@@ -77,7 +77,7 @@ test("kit stamps and checks launch deliverables while leaving review proofs and 
   }
   assert.equal(entries[0].pass, false);
   assert.deepEqual(entries[0].brief, [{ rule: "essential-missing", detail: '"6 April 2027"', source: "brief" }]);
-  assert.equal(entries[1].pass, true);
+  assert.equal(entries[1].pass, true, JSON.stringify({ floor: entries[1].floor, brief: entries[1].brief }));
   const sheet = readFileSync(join(outputs, "kit-sheet.html"), "utf8");
   assert.doesNotMatch(sheet, /hero-desktop|hero-mobile|holiday-announcement/);
   assert.equal(readFileSync(join(outputs, "hero-desktop.html"), "utf8"), markedReview);
