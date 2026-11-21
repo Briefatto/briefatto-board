@@ -5,4 +5,4 @@
 - **Work Sans (SIL OFL 1.1).** The HTTP font validation test serves one Work Sans Latin variable WOFF2 locally. The original attribution and the full licence accompany the font. [Bundled licence](resources/fonts/OFL-WorkSans.txt) · [Upstream project](https://github.com/weiweihuanghuang/Work-Sans)
 - **Interfaces referenced by the board.** The skill references Google's DESIGN.md format, the local validator implements the board's checks, and an optional export emits configuration for the Astryx theme API. This checkout contains the integration code. [DESIGN.md format](https://github.com/google-labs-code/design.md) · [Astryx](https://astryx.atmeta.com/docs/theme)
 
-The npm runtime dependencies are Culori (MIT), Playwright (Apache-2.0), pngjs (MIT), yaml (ISC), and Zod (MIT). npm installs them with their own licences. The checkout lockfile records build tooling and transitive packages.
+The npm runtime dependencies are Culori (MIT), Mozilla PDF.js (Apache-2.0), Playwright (Apache-2.0), pngjs (MIT), yaml (ISC), and Zod (MIT). npm installs them with their own licences. The checkout lockfile records build tooling and transitive packages.

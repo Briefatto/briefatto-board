@@ -48,7 +48,10 @@ function failedBoard(project: string, ...args: string[]): string {
 
 function authoredFixture(project: string) {
   const dir = join(project, "directions", "pick");
+  const refs = join(project, "refs");
   mkdirSync(dir, { recursive: true });
+  mkdirSync(refs, { recursive: true });
+  writeFileSync(join(refs, "notes.md"), "```approval pick\nYes, I approve this for production.\n```\n");
   writeFileSync(join(dir, "hero.html"), [
     '<!doctype html><html lang="en"><head><title>Fixture</title></head>',
     '<body style="margin:0;background:#0e1a2b;color:#fff"><h1 style="font:32px serif">Open Fridays.</h1><p style="font:32px serif">Pick it up</p>',
@@ -341,11 +344,10 @@ test("freeze preview shows the exact claims and their sources before a guide exi
   using project = scratch();
   const dir = join(project.path, "directions", "pick");
   const brief = join(project.path, "brief.md");
-  const notes = join(project.path, "refs");
+  const notes = join(project.path, "refs", "notes.md");
   const draft = authoredFixture(project.path);
   writeFileSync(brief, "\r\n" + readFileSync(brief, "utf8").replace(/\n/g, "\r\n") + "- Website: bakery.example/friday\r\n");
-  mkdirSync(notes);
-  writeFileSync(join(notes, "notes.md"), "# Approval\n\n```constraint\nKeep the Friday headline.\n```\n");
+  writeFileSync(notes, "# Approval\n\n```constraint\nKeep the Friday headline.\n```\n\n" + readFileSync(notes, "utf8"));
   const hero = join(dir, "hero.html");
   writeFileSync(hero, readFileSync(hero, "utf8").replace(/32px/g, "32.125px"));
   const tree = readdirSync(project.path, { recursive: true });
@@ -377,7 +379,6 @@ test("prose-only freeze records a plain brief and refreshes CSS measurements and
   const guide = join(project.path, "DESIGN.md");
   const hero = join(project.path, "directions", "pick", "hero.html");
   const notes = join(project.path, "refs", "notes.md");
-  mkdirSync(join(project.path, "refs"));
   writeFileSync(join(project.path, "brief.md"), [
     "We're launching a small version-checking CLI. It reports what's out of line.",
     "",
@@ -386,7 +387,7 @@ test("prose-only freeze records a plain brief and refreshes CSS measurements and
     'The words we\'ve signed off are "Two films. Home by seven.", "Book a seat" and "Open Fridays.".',
   ].join("\n"));
   writeFileSync(join(project.path, "essentials.json"), JSON.stringify({ requiredByFormat: { hero: ["Open Fridays."] } }));
-  writeFileSync(notes, "```constraint\nKeep the commands beside the diagram.\n```\n");
+  appendFileSync(notes, "```constraint\nKeep the commands beside the diagram.\n```\n");
   const prose = "# Workbench\r\n\r\n## Layout\r\nKeep the layout in two parts.\r\n\r\n## Voice\r\nWrite like a teammate who reads the docs.\r\n";
   writeFileSync(guide, prose);
   const source = readFileSync(hero, "utf8").replace("<h1 ", '<h1 data-board-role="launch headline" ');
@@ -510,10 +511,13 @@ test("freeze remembers client quotes, versions new quotes alone and keeps both r
   mkdirSync(join(project.path, "assets"));
   const logo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5"/></svg>';
   writeFileSync(join(project.path, "assets", "brand.svg"), logo);
+  writeFileSync(join(project.path, "essentials.json"), JSON.stringify({
+    required: ["EUR 12", "test.example"], body: [subline], assets: [{ path: "assets/brand.svg", origin: "client" }],
+  }));
   const before = ["Show the bread.", "nothing that looks clickable"];
   const added = "Always say ‘Friday’.";
   const quote = (text: string) => `\`\`\`constraint\n${text}\n\`\`\`\n`;
-  writeFileSync(notes, "# Client replies\n\nI like number two more.\n\n" + before.map(quote).join("\n"));
+  writeFileSync(notes, "# Client replies\n\nI like number two more.\n\n```approval pick\nYes, I approve this for production.\n```\n\n" + before.map(quote).join("\n"));
 
   // This test covers the measured guide, including its generated asset embedding and prose.
   runBoard(project.path, "freeze", ".", "pick", "--extract");

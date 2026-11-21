@@ -54,6 +54,10 @@ function installPackage(project) {
   }
 }
 
+if (installing && args.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
+  console.log("Usage: briefatto-board install");
+  process.exit(0);
+}
 if (installing && args.length !== 1) {
   console.error("Run `briefatto-board install` from your project root.");
   process.exit(2);

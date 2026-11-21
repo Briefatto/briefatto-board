@@ -1,0 +1,9 @@
+{
+  "required": ["Start your subscription", "EUR 9", "mollerbread.nl"],
+  "body": ["One sourdough loaf a week from our wood-fired oven, for EUR 9. Pick it up or we cycle it over."],
+  "assets": [
+    {"path": "assets/photos/loaf-cooling.jpg", "origin": "brief"},
+    {"path": "assets/photos/loaf-dutch-oven.jpg", "origin": "brief"},
+    {"path": "assets/photos/loaf-rustic.webp", "origin": "brief"}
+  ]
+}

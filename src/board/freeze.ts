@@ -3,8 +3,8 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempDisposableSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { loadAdoption, localAdoptionAssets, withAdoptedPages } from "./adoption.js";
-import { readConstraintSources } from "./constraints.js";
+import { adoptionPath, loadAdoption, localAdoptionAssets, withAdoptedPages } from "./adoption.js";
+import { readApproval, readConstraintSources } from "./constraints.js";
 import { designMd, describeChange } from "./design.js";
 import { withGeneratedDesign } from "./design-sections.js";
 import { briefExpectations, computedSample, designHash, stampDesign, unsignedDesign, validateDesign, type SourceQuote } from "./design-validation.js";
@@ -29,6 +29,8 @@ export interface Board {
   /** Hash of the generated sections for a guide made with --extract. */
   extractedDesignHash?: string;
   note: string;
+  /** Approval recorded for the initial freeze of a new direction. */
+  initialApproval?: { method: "client" | "self" };
   name: string;
   direction: { id: string; title: string; text: string };
   frozenAt: string;
@@ -224,6 +226,18 @@ function projectBrief(project: string): string | undefined {
   return existsSync(path) ? readFileSync(path, "utf8") : undefined;
 }
 
+export function initialApproval(project: string, directionDir: string | undefined, selfApproved = false): Board["initialApproval"] {
+  if (!directionDir) return;
+  if (selfApproved) return { method: "self" };
+  if (!existsSync(join(project, "brief.md"))) return;
+  const direction = basename(directionDir);
+  const quote = readApproval(join(project, "refs", "notes.md"), direction);
+  if (!quote) {
+    throw new Error(`Record the client's verbatim approval in a fenced approval ${direction} block in refs/notes.md, then run board freeze . ${direction}.`);
+  }
+  return { method: "client" };
+}
+
 function constraintSources(project: string, previous: Board | undefined): SourceQuote[] {
   const quotes = new Map((previous?.constraints ?? []).map((value, index) =>
     [value.replace(/\r\n/g, "\n"), { value, source: `board/board.json constraints[${index}]` }]));
@@ -310,7 +324,7 @@ export async function previewFreeze(opts: BoardSources & { boardDir: string; ren
 
 /** Render the selected direction or site into a staged board. */
 export async function renderBoard(opts: BoardSources & {
-  boardDir: string; name: string; renderer?: Renderer; version?: number; note?: string;
+  boardDir: string; name: string; renderer?: Renderer; version?: number; note?: string; initialApproval?: Board["initialApproval"];
   constraints?: SourceQuote[]; previous?: Board; extract?: boolean; authoredDesign?: string; onValidated?: () => void; currentBoardDir?: string;
 }): Promise<Board> {
   const { directionDir, boardDir, name } = opts;
@@ -327,6 +341,7 @@ export async function renderBoard(opts: BoardSources & {
     const board = boardFromRenders(name, direction, renders, boardDir);
     board.version = opts.version ?? board.version;
     board.note = opts.note ?? board.note;
+    if (opts.initialApproval) board.initialApproval = opts.initialApproval;
     const brief = projectBrief(project);
     if (directionDir) {
       board.essentials = loadEssentials(project);
@@ -373,22 +388,24 @@ export async function renderBoard(opts: BoardSources & {
 
 /** Freeze a new current version while retaining the previous board and its sample files. */
 export function freeze(opts: BoardSources & {
-  boardDir: string; name: string; note?: string; renderer?: Renderer; extract?: boolean;
+  boardDir: string; name: string; note?: string; renderer?: Renderer; extract?: boolean; selfApproved?: boolean;
   onValidated?: () => void; prepareCurrent?: (guide: string, source?: Buffer) => () => void;
 }) {
   const project = dirname(opts.boardDir);
   let source: Buffer | undefined;
   return publishBoard(opts.boardDir, (stage, version, previous) => {
+    const approval = previous ? undefined : initialApproval(project, opts.directionDir, opts.selfApproved);
     let authoredDesign: string | undefined;
     if (!opts.extract) {
       const designPath = join(project, "DESIGN.md");
-      if (!existsSync(designPath)) throw new Error("FAIL DESIGN.md\n  missing-guide: Write the project-root DESIGN.md from the rendered pages before freezing.");
+      const retry = `board freeze .${opts.directionDir ? ` ${basename(opts.directionDir)}` : ""}`;
+      if (!existsSync(designPath)) throw new Error(`Write the project-root DESIGN.md from the rendered pages, then run ${retry}.`);
       source = readFileSync(designPath);
       authoredDesign = decodeGuide(source);
-      if (!authoredDesign.trim()) throw new Error("FAIL DESIGN.md\n  missing-guide: The project-root DESIGN.md is empty.");
+      if (!authoredDesign.trim()) throw new Error(`Fill in the project-root DESIGN.md, then run ${retry}.`);
     }
     const constraints = constraintSources(project, previous);
-    return renderBoard({ ...opts, boardDir: stage, version, constraints, previous, authoredDesign, currentBoardDir: opts.boardDir });
+    return renderBoard({ ...opts, boardDir: stage, version, constraints, previous, authoredDesign, initialApproval: approval, currentBoardDir: opts.boardDir });
   }, {
     finishStage: async (stage, b) => {
       await writeStylescape(b, stage, `${b.name}: frozen board ${versionLabel(b.version)} (${b.direction.title})`, join(stage, "stylescape.png"), opts.renderer);

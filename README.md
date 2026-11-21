@@ -46,6 +46,8 @@ npx briefatto-board directions .
 npx briefatto-board freeze . lead
 ```
 
+Before v1, put the client's exact production approval in a fenced `approval lead` block in `refs/notes.md`. Replace `lead` with the chosen direction ID. If you are working alone as your own client, run `board freeze . lead --self-approved`. `board log` records the decision.
+
 Node.js 24 or later. The first render prints the Playwright command to install Chromium if it is missing.
 
 ## How it works
@@ -89,6 +91,23 @@ Plumb is an invented open-source log search tool from [`examples/plumb`](example
 
 Try it on the other examples in [`examples/`](examples): [`bakery`](examples/bakery/brief.md), a brief with CC0 photographs, and [`current-site`](examples/current-site/README.md), a small site to adopt.
 
+## Check the files you ship
+
+Export the finished files and list every delivery PNG and PDF in project-root `deliverables.json`. Each entry names the actual file, its editable HTML source, and the exact comparison size in pixels. Use project-relative paths.
+
+```json
+[
+  {"file":"delivery/card.png","html":"outputs/post.html","width":1080,"height":1080},
+  {"file":"delivery/poster.pdf","html":"outputs/poster.html","width":1212,"height":1704,"pageSizeMm":{"width":303,"height":426}}
+]
+```
+
+- Add `"transparent":true` for a transparent PNG. Use `viewport` with `width` and `height` when the HTML lays out at a different CSS size. Board scales the capture by the export width divided by the viewport width. Add `"fullPage":true` for a PNG of the full scroll height.
+- PDF entries describe one page. Board rasterizes the page with PDF.js and compares it with the HTML in print media. The page aspect must fit within one comparison pixel on either axis. Optional `pageSizeMm` checks the visible page box to within 0.1 mm on each axis. Use the full page size including bleed when the visible page includes it.
+- A PNG must match every decoded RGBA pixel. Board ignores RGB values under fully transparent pixels. Lossless encoding of the same Chromium capture preserves these pixels exactly. PDFs allow a mean maximum-channel difference of 2 on a 0–255 scale and at most 2% of pixels differing by more than 32. In each 64 × 64 pixel tile, Board also compares pixels in both directions within one pixel of their position to account for rasterizer edge placement. The mean after this allowance must be at most 5. The A3 export measured 0.40 overall, 0.53% above 32, and 2.44 in the worst tile. A smaller type-and-vector PDF also passes. Removing a short date line stayed within the overall limits and exceeded the tile limit. The PDF regressions cover both scenarios.
+
+Run `board check .` to validate the listed files, or pass HTML filenames to run layout checks too. `board kit .` requires a frozen guide and includes the layout checks and final-file results in `outputs/kit-check.json`. Each export row records the SHA-256 of the checked bytes. Use independently renderable HTML as the source for each export. With no manifest, `board check` renders HTML previews. `board kit` checks the format-named PNGs alongside their HTML and creates one only if it is missing. Use `board render <file.html>` to regenerate these PNGs after editing the HTML.
+
 ## Change the brand
 
 <p align="center">
@@ -114,8 +133,8 @@ npx briefatto-board status
 | `board refs .` | Builds a reference sheet from entries in `refs/manifest.json` |
 | `board directions .` | Renders each direction's samples as a sheet |
 | `board freeze . [direction]` | Generates source and sample values, validates the prose, and stamps the next guide version |
-| `board check . <piece.html>` | Renders a piece and checks it against the quality floor |
-| `board kit .` | Checks launch deliverables as a campaign and makes a receipt and kit sheet |
+| `board check . [<piece.html>]` | Checks the visual floor on supplied HTML and verifies final PNG and PDF files |
+| `board kit .` | Requires a frozen guide and checks the campaign and final exports for the kit receipt |
 | `board status` | Lists pieces as current, stale or unrecorded |
 | `board log` · `board diff v1 v2` | Shows version history and what changed |
 

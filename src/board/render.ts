@@ -252,6 +252,7 @@ function readPage(canvas: { width: number; height: number; collectDesignStyles: 
     const textParts: string[] = [];
     let clipped = false;
     const remember = (node: Node, text: string, rects: DOMRect[]) => {
+      if (!/^(?:preserve|preserve-breaks|break-spaces)$/.test(cs.whiteSpaceCollapse)) text = text.replace(/[\r\n]+/g, " ");
       visibleText.push({ node, text, block: textBlock(el), first: rects[0], last: rects[rects.length - 1] });
     };
     const measure = (node: Node, rawText: string, rects: DOMRect[]) => {
@@ -399,9 +400,12 @@ function readPage(canvas: { width: number; height: number; collectDesignStyles: 
   );
   out.visibleText = visibleText.map((run, i) => {
     const previous = visibleText[i - 1];
-    const separate = previous && (previous.block !== run.block
-      || previous.last.bottom <= run.first.top || run.first.bottom <= previous.last.top);
-    return (separate ? " " : "") + run.text;
+    if (!previous) return run.text;
+    const a = previous.last, b = run.first;
+    const rowShift = Math.abs(a.top + a.bottom - b.top - b.bottom) / 2;
+    const lineBreak = a.bottom <= b.top || b.bottom <= a.top ||
+      (rowShift > 1 && b.left < a.right - 1 && b.left <= a.left + 1);
+    return (lineBreak ? "\n" : previous.block !== run.block ? " " : "") + run.text;
   }).join("");
   for (const d of Array.from(document.querySelectorAll("[data-device]"))) {
     const r = d.getBoundingClientRect();
@@ -503,6 +507,11 @@ export class Renderer {
   private browser?: Browser;
   async open() { this.browser ??= await launchChromium(); return this; }
   async close() { await this.browser?.close(); this.browser = undefined; }
+
+  async newPage(options?: Parameters<Browser["newPage"]>[0]) {
+    await this.open();
+    return this.browser!.newPage(options);
+  }
 
   /** Resolve CSS colour literals using the same serialization as the sample's computed styles. */
   async normalizeColours(values: string[]): Promise<string[]> {

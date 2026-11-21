@@ -39,6 +39,7 @@ test("kit stamps and checks launch deliverables while leaving review proofs and 
   board.essentials = loadEssentials(project.path);
   board.brief = brief;
   writeFileSync(join(boardDir, "board.json"), JSON.stringify(board));
+  writeFileSync(join(boardDir, "DESIGN.md"), "# Workbench\n");
 
   const piece = (copy: string, purpose = "") => [
     '<!doctype html><html lang="en"><head><meta charset="utf-8">',
@@ -67,7 +68,11 @@ test("kit stamps and checks launch deliverables while leaving review proofs and 
   assert.match(run(1, "kit", ".", "--campaign", "Workbench launch"), /campaign: Workbench launch, checked against brief\.md/);
   const receipt = join(outputs, "kit-check.json");
   const saved = readFileSync(receipt, "utf8");
-  const entries = JSON.parse(saved);
+  const rows = JSON.parse(saved);
+  const entries = rows.filter((entry: { kind?: string }) => !entry.kind);
+  const exports = rows.filter((entry: { kind?: string }) => entry.kind === "png");
+  assert.deepEqual(exports.map((entry: { file: string }) => basename(entry.file)), ["announcement.png", "github.png"]);
+  assert.ok(exports.every((entry: { pass: boolean; sha256: string }) => entry.pass && /^[a-f0-9]{64}$/.test(entry.sha256)));
   assert.deepEqual(entries.map((entry: { file: string }) => basename(entry.file)), ["announcement.html", "github.html"]);
   for (const entry of entries) {
     assert.equal(entry.briefApplied, true);
@@ -91,7 +96,7 @@ test("kit stamps and checks launch deliverables while leaving review proofs and 
   board.essentials = { ...board.essentials!, requiredByFormat: undefined };
   writeFileSync(join(boardDir, "board.json"), JSON.stringify(board));
   assert.match(run(1, "kit", "."), /campaign-requirements-missing/);
-  for (const entry of JSON.parse(readFileSync(receipt, "utf8"))) {
+  for (const entry of JSON.parse(readFileSync(receipt, "utf8")).filter((entry: { kind?: string }) => !entry.kind)) {
     assert.equal(entry.pass, false);
     assert.equal(entry.briefScope, "campaign: Workbench launch, checked against brief.md");
     assert.equal(entry.brief[0].rule, "campaign-requirements-missing");

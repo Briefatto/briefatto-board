@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3
+
+- Verify final PNG and PDF deliverables by decoding and comparing their pixels with the editable HTML. Record file hashes and comparison results in the check and kit receipts.
+- Require a frozen guide for kits and verbatim client approval for a new direction's first freeze. Record an explicit solo approval in the version log.
+- Record client-supplied asset origins, allow approved copy to reflow at standalone middle dots, and suppress overlaps between fragments of the same text node.
+- Add help for every subcommand and point users to the next command or the exact missing format field.
+
 ## 0.1.2
 
 - Declare the launch campaign when assembling a kit, check the deliverables against the brief, and record their scope in the receipt. Exclude review pieces and support copy requirements per format.

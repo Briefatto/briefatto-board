@@ -211,7 +211,13 @@ function inside(directory: string, path: string) {
 
 function readReferences(directory: string): Reference[] {
   const manifest = join(directory, "manifest.json");
-  const json = readFileSync(manifest, "utf8").replace(/^\uFEFF/, "");
+  let json: string;
+  try {
+    json = readFileSync(manifest, "utf8").replace(/^\uFEFF/, "");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    throw new Error("Create refs/manifest.json with your references, then run board refs .");
+  }
   let entries: unknown;
   try {
     entries = JSON.parse(json);

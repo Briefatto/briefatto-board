@@ -5,11 +5,14 @@
 // Source: `essentials.json` in the project when the agent wrote one; otherwise read from the brief's copy list
 // ("- Call to action: ...", "- URL: ...", "- Subline: ...", a price such as "EUR 9" in the subline or details).
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+type AssetOrigin = "brief" | "client" | "legacy";
 
 export interface Essentials {
-  /** Strings every piece must show (whitespace and case are ignored). URL-like strings are not required on the website hero. */
+  /** Strings every piece must show verbatim, allowing layout whitespace. URL-like strings are not required on the website hero. */
   required: string[];
   /** Extra literal requirements for an individual format. */
   requiredByFormat?: Record<string, string[]>;
@@ -24,6 +27,8 @@ export interface Essentials {
   bodyFloor: "reading" | "minimum";
   /** The brief's images (paths relative to the project). */
   assets: string[];
+  /** Recorded intake origin by path. Older frozen guides may have no origins. */
+  assetOrigins?: Record<string, AssetOrigin>;
   /** "required": every piece shows at least one of them; "optional": the brief said they may be left out. */
   assetUse: "required" | "optional";
   source: "essentials.json" | "brief.md" | "none";
@@ -35,20 +40,28 @@ export const briefBrand = (brief: string | undefined, boardName: string) =>
 /** A price ("EUR 9", "€12", "$49.00") or a day-and-month date ("1 March", "12 May", "7–10 August"). */
 const PRICE = /(?:EUR|USD|GBP|€|\$|£)\s?\d+(?:[.,]\d{2})?/;
 const DATE = /\b\d{1,2}(?:\s?[–-]\s?\d{1,2})?\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\b/;
-const IMAGE = /\.(?:jpe?g|png|webp|avif|gif|svg)$/i;
+const remote = /^https?:\/\//i;
 
-function images(dir: string, root: string, out: string[] = []): string[] {
-  if (!existsSync(dir)) return out;
-  for (const f of readdirSync(dir)) {
-    const p = join(dir, f);
-    if (statSync(p).isDirectory()) images(p, root, out);
-    else if (IMAGE.test(f)) out.push(relative(root, p).replace(/\\/g, "/"));
+function intakeAssets(value: unknown, file: string) {
+  const origins = new Map<string, AssetOrigin>();
+  if (value !== undefined) {
+    const invalid = () => new Error(`${file}: assets must list supplied images as {"path":"assets/image.png","origin":"brief"} or use origin "client".`);
+    if (!Array.isArray(value)) throw invalid();
+    for (const entry of value) {
+      const legacy = typeof entry === "string";
+      const origin = legacy ? "legacy" : entry?.origin;
+      const source = legacy ? entry : entry?.path;
+      if ((!legacy && origin !== "brief" && origin !== "client") || typeof source !== "string" || !source.trim()) throw invalid();
+      const path = remote.test(source) ? new URL(source).href : source.replaceAll("\\", "/").replace(/^\.\//, "");
+      if (!remote.test(path) && (isAbsolute(path) || /^[A-Za-z]:/.test(path) || path.split("/").includes(".."))) throw invalid();
+      if (origins.has(path) && origins.get(path) !== origin) throw new Error(`${file}: conflicting origins for ${path}.`);
+      origins.set(path, origin);
+    }
   }
-  return out;
+  return { assets: [...origins.keys()], assetOrigins: Object.fromEntries(origins) };
 }
 
 export function loadEssentials(project: string): Essentials {
-  const assets = images(join(project, "assets"), project);
   const own = join(project, "essentials.json");
   if (existsSync(own)) {
     const e = JSON.parse(readFileSync(own, "utf8").replace(/^\uFEFF/, ""));
@@ -56,10 +69,12 @@ export function loadEssentials(project: string): Essentials {
       !e.requiredByFormat || typeof e.requiredByFormat !== "object" || Array.isArray(e.requiredByFormat) ||
       Object.values(e.requiredByFormat).some((copies) => !Array.isArray(copies) || copies.some((copy) => typeof copy !== "string" || !copy.trim()))
     )) throw new Error(`${own}: requiredByFormat must map format IDs to arrays of non-empty strings.`);
-    return { required: e.required ?? [], requiredByFormat: e.requiredByFormat, body: e.body ?? [], terms: e.terms ?? [], termsExempt: e.termsExempt ?? [], bodyFloor: e.bodyFloor ?? "minimum", assets: e.assets ?? assets, assetUse: e.assetUse ?? (assets.length ? "required" : "optional"), source: "essentials.json" };
+    const intake = intakeAssets(e.assets, own);
+    return { required: e.required ?? [], requiredByFormat: e.requiredByFormat, body: e.body ?? [], terms: e.terms ?? [], termsExempt: e.termsExempt ?? [], bodyFloor: e.bodyFloor ?? "minimum", ...intake, assetUse: e.assetUse ?? (intake.assets.length ? "required" : "optional"), source: "essentials.json" };
   }
   const briefPath = join(project, "brief.md");
-  if (!existsSync(briefPath)) return { required: [], body: [], terms: [], termsExempt: [], bodyFloor: "minimum", assets, assetUse: assets.length ? "required" : "optional", source: "none" };
+  const intake = { assets: [], assetOrigins: {}, assetUse: "optional" } as const satisfies Pick<Essentials, "assets" | "assetOrigins" | "assetUse">;
+  if (!existsSync(briefPath)) return { required: [], body: [], terms: [], termsExempt: [], bodyFloor: "minimum", ...intake, source: "none" };
   const brief = readFileSync(briefPath, "utf8");
   const required: string[] = [];
   const cta = field(brief, "Call to action");
@@ -70,9 +85,42 @@ export function loadEssentials(project: string): Essentials {
   const url = field(brief, "URL") ?? field(brief, "Website") ?? field(brief, "Address");
   if (url) required.push(url);
   const body = [field(brief, "Subline")].filter((x): x is string => !!x);
-  // The brief may release its images explicitly; otherwise supplied images are used.
-  const optional = /images?[^.\n]*(?:optional|may be left out|not required)|do not use (?:the|our) (?:photos|images)/i.test(brief);
-  return { required, body, terms: [], termsExempt: [], bodyFloor: "minimum", assets, assetUse: assets.length && !optional ? "required" : "optional", source: "brief.md" };
+  return { required, body, terms: [], termsExempt: [], bodyFloor: "minimum", ...intake, source: "brief.md" };
+}
+
+/** Old freezes mixed inferred assets with actual attachments. Preserve lists that can be traced to intake. */
+export function campaignEssentials(essentials: Essentials | undefined, project?: string): Essentials | undefined {
+  if (!essentials?.assets.length || essentials.assetOrigins) return essentials;
+  const manifest = project && join(project, "essentials.json");
+  const confirmed = manifest && existsSync(manifest)
+    ? intakeAssets(JSON.parse(readFileSync(manifest, "utf8").replace(/^\uFEFF/, "")).assets, manifest)
+    : undefined;
+  return { ...essentials, assets: essentials.assets.filter((name) => confirmed && Object.hasOwn(confirmed.assetOrigins, name)) };
+}
+
+export function isSuppliedImage(name: string, src: string, project?: string): boolean {
+  if (remote.test(name)) return name === src;
+  if (!src.startsWith("file:")) return false;
+  try {
+    const actual = fileURLToPath(src);
+    return project ? relative(resolve(project, name), actual) === "" : actual.replaceAll("\\", "/").endsWith(`/${name}`);
+  } catch {
+    return false;
+  }
+}
+
+export const copyWhitespace = (s: string) => s.replace(/\s+/g, " ").trim();
+
+/** A line break can serve the layout role of a standalone middle dot. Keep the words and all other punctuation. */
+export function matchesCampaignCopy(text: string, approved: string, exact = false): boolean {
+  const copy = copyWhitespace(approved);
+  if (!copy) return false;
+  const word = "[\\p{L}\\p{N}\\p{M}_]";
+  const pattern = copy.split(" · ").map((line) => line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replaceAll(" ", "\\s+"))
+    .join("(?:\\s+·\\s+|\\s*\\n\\s*)");
+  const start = exact ? "^" : new RegExp(`^${word}`, "u").test(copy) ? `(?<!${word})` : "";
+  const end = exact ? "$" : new RegExp(`${word}$`, "u").test(copy) ? `(?!${word})` : "";
+  return new RegExp(start + pattern + end, "u").test(text.trim());
 }
 
 export const norm = (s: string) => s.toLowerCase().replace(/[–—]/g, "-").replace(/\s+/g, " ").trim();

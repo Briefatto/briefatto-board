@@ -2,9 +2,9 @@
 // Composition comparisons are informational.
 
 import { writeFileSync } from "node:fs";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { designColourClaims, designTypographyFamilies } from "./design-validation.js";
-import { briefBrand, requiredCampaignCopy } from "./essentials.js";
+import { briefBrand, campaignEssentials, requiredCampaignCopy, type Essentials } from "./essentials.js";
 import type { Board } from "./freeze.js";
 import { findProjectFormats, formatById, formatOfFile, isFormatFile, type BoardFormat } from "./formats.js";
 import { briefFaults, checkImpeccable, formatNotes, impeccable, renderFaults, type DismissedFloorFault, type FloorFault, type SourceFloor } from "./floor.js";
@@ -174,7 +174,7 @@ function checkRendered(board: Board, r: Rendered, result: DefaultCheckResult, ap
   };
 }
 
-function checkCoverage(fmt: BoardFormat, r: Rendered, detectorFailure: FloorFault | undefined, board: Board | null, campaign: boolean, consistency: boolean): CheckCoverage {
+function checkCoverage(fmt: BoardFormat, r: Rendered, detectorFailure: FloorFault | undefined, board: Board | null, e: Essentials | undefined, campaign: boolean, consistency: boolean): CheckCoverage {
   const checks: CheckCoverage = { ran: [], skipped: [] };
   const record = (check: string, reason?: string) => {
     if (reason) checks.skipped.push({ check, reason });
@@ -188,7 +188,6 @@ function checkCoverage(fmt: BoardFormat, r: Rendered, detectorFailure: FloorFaul
   record("story safe zones", fmt.kind === "story" && fmt.safeZones ? undefined : "format declares no story safe zones");
   record("brand name when visible", floorOnly);
   const campaignSkipped = floorOnly ?? (campaign ? undefined : "piece has no board-campaign meta and --brief was not supplied");
-  const e = board?.essentials;
   const { required, terms } = requiredCampaignCopy(e, fmt.id);
   record(campaignChecks.copy, campaignSkipped ?? (!required.length && !terms.length ? "brief defines no required copy for this format" : undefined));
   record(campaignChecks.body, campaignSkipped ?? (!(e?.body.length && e.bodyFloor === "reading") ? "brief defines no body copy with a reading-size floor" : undefined));
@@ -200,7 +199,8 @@ function checkCoverage(fmt: BoardFormat, r: Rendered, detectorFailure: FloorFaul
 
 export async function check(board: Board | null, files: string[], opts: {
   renderer?: Renderer; out?: string; consistency?: boolean; formats?: BoardFormat[]; previous?: Board[]; brief?: boolean;
-  designs?: ReadonlyMap<number, string>; requireBriefCoverage?: boolean;
+  designs?: ReadonlyMap<number, string>; requireBriefCoverage?: boolean; project?: string;
+  previewDir?: string;
 } = {}) {
   const renderer = opts.renderer ?? new Renderer();
   const results: Array<DefaultCheckResult | CheckResult | (FloorCheckResult & { composition: Composition })> = [];
@@ -208,6 +208,7 @@ export async function check(board: Board | null, files: string[], opts: {
     const colours = opts.designs?.size ? await frozenColours(renderer, opts.designs) : new Map<number, Set<string>>();
     const currentDesign = board ? opts.designs?.get(board.version) : undefined;
     const brandFonts = currentDesign === undefined ? undefined : designTypographyFamilies(currentDesign);
+    const essentials = campaignEssentials(board?.essentials, opts.project);
     for (const f of files) {
       const campaign = board ? readPiece(f).campaign ?? (opts.brief ? board.name : undefined) : undefined;
       const briefApplied = campaign !== undefined;
@@ -216,7 +217,9 @@ export async function check(board: Board | null, files: string[], opts: {
       const findings = impeccable(f);
       // Keep the custom preview separate from a piece's deliverable PNG.
       let source!: SourceFloor;
-      const r = await renderer.render(f, kit, kit ? undefined : f.replace(/\.html?$/i, ".check.png"), false, undefined, undefined, async (page) => {
+      const preview = opts.previewDir ? join(opts.previewDir, `${results.length}-${basename(f).replace(/\.html?$/i, "")}.png`)
+        : kit ? undefined : f.replace(/\.html?$/i, ".check.png");
+      const r = await renderer.render(f, kit, preview, false, undefined, undefined, async (page) => {
         source = await checkImpeccable(findings, page, brandFonts);
       });
       // Custom HTML is read at its native screen size, using the existing native-size text floor.
@@ -225,13 +228,13 @@ export async function check(board: Board | null, files: string[], opts: {
       const designNotes = [...source.designNotes, ...source.floor.filter(isDesignNote), ...formatNotes(r, fmt)];
       const floor = [...source.floor.filter((fault) => !isDesignNote(fault)), ...renderFaults(r, fmt)];
       const format = kit?.id ?? basename(f);
-      const checks = checkCoverage(fmt, r, findings.find((fault) => fault.rule === "impeccable-failed"), board, briefApplied, !!opts.consistency);
+      const checks = checkCoverage(fmt, r, findings.find((fault) => fault.rule === "impeccable-failed"), board, essentials, briefApplied, !!opts.consistency);
       const base = { file: f, format, png: r.png, floor, dismissed: source.dismissed, checks, designNotes };
       if (!board) {
         results.push({ ...base, pass: floor.length === 0, composition: composition(r) });
         continue;
       }
-      const brief = briefFaults(r, fmt, briefApplied ? board.essentials : undefined, briefBrand(board.brief, board.name));
+      const brief = briefFaults(r, fmt, briefApplied ? essentials : undefined, briefBrand(board.brief, board.name), opts.project);
       if (opts.requireBriefCoverage && !Object.values(campaignChecks).some((name) => checks.ran.includes(name))) {
         brief.push({ rule: "campaign-requirements-missing", source: "brief",
           detail: `No campaign requirements could be checked for ${format}. Record the brief's requirements in essentials.json and freeze again.` });

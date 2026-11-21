@@ -3,6 +3,7 @@ import { isMap, parseDocument } from "yaml";
 import type { Board } from "./freeze.js";
 import type { Rendered, Renderer } from "./render.js";
 import { validateDesignReferences, type DesignFinding } from "./design-references.js";
+import { copyWhitespace, matchesCampaignCopy } from "./essentials.js";
 import { deltaE, toHex } from "./metrics.js";
 
 const frontMatter = /^\uFEFF?---\r?\n([\s\S]*?)^---[ \t]*(?:\r?\n|(?![\s\S]))/m;
@@ -353,7 +354,7 @@ function briefFindings(lines: string[], expectations: ReturnType<typeof briefExp
     const actual = quotes(section(lines, heading));
     for (const value of new Set(actual)) {
       const sources = [...expected, ...accepted];
-      if (sources.some((quote) => quote.value === value)) continue;
+      if (sources.some((quote) => copyWhitespace(quote.value) === copyWhitespace(value))) continue;
       const alternatives = sources.map((quote) => `${JSON.stringify(quote.value)} from ${quote.source}`);
       const hint = alternatives.length ? ` Use ${alternatives.join("; ")} verbatim.` : "";
       findings.push({ rule, detail: `No exact source match for ${JSON.stringify(value)} under "### ${heading}".${hint}` });
@@ -378,10 +379,8 @@ function briefFindings(lines: string[], expectations: ReturnType<typeof briefExp
     if (role === "Role" && copy === "Copy" || [role, copy].every((cell) => /^:?-+:?$/.test(cell))) continue;
     actual.push({ role, copy });
   }
-  const hasEntry = (entries: Array<Pick<CampaignRow, "role" | "copy">>, { role, copy }: Pick<CampaignRow, "role" | "copy">) =>
-    entries.some((entry) => role === entry.role && copy === entry.copy);
   for (const entry of actual) {
-    if (hasEntry(campaignCopy, entry)) continue;
+    if (campaignCopy.some(({ role, copy }) => role === entry.role && matchesCampaignCopy(entry.copy.replace(/<br\s*\/?>/gi, "\n"), copy, true))) continue;
     const roles = campaignCopy.filter(({ role }) => role === entry.role);
     const choices = roles.length ? roles : campaignCopy;
     const alternatives = choices.map(({ role, copy, source }) => `${JSON.stringify(role)} with ${JSON.stringify(copy)} from ${source}`);

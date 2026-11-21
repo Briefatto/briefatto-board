@@ -6,6 +6,14 @@ export function readConstraints(path: string): string[] {
 }
 
 export function readConstraintSources(path: string): Array<{ value: string; line: number }> {
+  return readMarkedQuotes(path, "constraint", "constraint");
+}
+
+export function readApproval(path: string, direction: string): string | undefined {
+  return readMarkedQuotes(path, `approval ${direction}`, "approval").at(-1)?.value;
+}
+
+function readMarkedQuotes(path: string, infoString: string, kind: string): Array<{ value: string; line: number }> {
   let notes: string;
   try {
     const bytes = readFileSync(path);
@@ -19,21 +27,21 @@ export function readConstraintSources(path: string): Array<{ value: string; line
   }
 
   const quotes: Array<{ value: string; line: number }> = [];
-  let open: { marker: string; constraint: boolean; start: number } | undefined;
+  let open: { marker: string; selected: boolean; start: number } | undefined;
   for (const fence of notes.matchAll(/(?:^|(?<=\n))(`{3,}|~{3,})([^\r\n]*)(?:\r?\n|$)/g)) {
     const [, marker, info] = fence;
     if (!open) {
-      open = { marker, constraint: info.trim() === "constraint", start: fence.index + fence[0].length };
+      open = { marker, selected: info.trim() === infoString, start: fence.index + fence[0].length };
       continue;
     }
     if (!marker.startsWith(open.marker) || info.trim()) continue;
-    if (open.constraint) {
+    if (open.selected) {
       const quote = notes.slice(open.start, fence.index).replace(/\r?\n$/, "");
       if (quote.trim()) quotes.push({ value: quote, line: notes.slice(0, open.start).split("\n").length });
     }
     open = undefined;
   }
-  if (open?.constraint) throw new Error(`Unclosed constraint quote in ${path}.`);
+  if (open?.selected) throw new Error(`Unclosed ${kind} quote in ${path}.`);
   return quotes;
 }
 

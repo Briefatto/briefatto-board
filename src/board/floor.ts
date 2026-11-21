@@ -9,7 +9,7 @@ import { env, execPath, platform } from "node:process";
 import type { Page } from "playwright";
 import type { Rendered } from "./render.js";
 import { bodyTextPx, minTextPx, MIN_SEEN_TEXT_PX, type BoardFormat } from "./formats.js";
-import { norm, requiredCampaignCopy, urlLike, type Essentials } from "./essentials.js";
+import { copyWhitespace, isSuppliedImage, matchesCampaignCopy, norm, requiredCampaignCopy, urlLike, type Essentials } from "./essentials.js";
 
 export interface FloorFault { rule: string; detail: string; source: "impeccable" | "render" | "brief" }
 export interface DismissedFloorFault extends FloorFault { reason: string }
@@ -129,13 +129,14 @@ export function renderFaults(r: Rendered, fmt: BoardFormat): FloorFault[] {
   for (const a of r.actions ?? []) {
     if (a.offCanvas || a.clipped) faults.push({ rule: "cta-clipped", detail: a.text.slice(0, 60), source: "render" });
   }
-  const fragments = copy.flatMap(({ text, fragments }) => fragments.map((box) => ({ text, box }))).sort((a, b) => a.box.y - b.box.y);
+  const fragments = copy.flatMap(({ text, fragments }, run) => fragments.map((box) => ({ text, box, run }))).sort((a, b) => a.box.y - b.box.y);
   for (const [i, a] of fragments.entries()) {
     const b = a.box;
     for (let j = i + 1; j < fragments.length; j++) {
       const o = fragments[j].box;
       // Use the same one-CSS-pixel tolerance as edge clipping, for range rounding.
       if (o.y >= b.y + b.h - 1) break;
+      if (a.run === fragments[j].run) continue;
       const w = Math.min(b.x + b.w, o.x + o.w) - Math.max(b.x, o.x);
       const h = Math.min(b.y + b.h, o.y + o.h) - o.y;
       if (w > 1 && h > 1) faults.push({ rule: "text-over-text", detail: `"${a.text.slice(0, 30)}" / "${fragments[j].text.slice(0, 30)}"`, source: "render" });
@@ -152,12 +153,12 @@ const BODY_MIN_WORDS = 4;
 const words = (s: string) => norm(s).replace(/[^\p{L}\p{N}\s]/gu, " ").split(" ").filter(Boolean);
 
 /** Check the brand name when visible and, for campaign pieces, the brief's strings, body text and images. */
-export function briefFaults(r: Rendered, fmt: BoardFormat, e: Essentials | undefined, brand?: string): FloorFault[] {
+export function briefFaults(r: Rendered, fmt: BoardFormat, e: Essentials | undefined, brand?: string, project?: string): FloorFault[] {
   if (!e && !brand) return [];
   const faults: FloorFault[] = [];
   const minPx = minTextPx(fmt), bodyPx = bodyTextPx(fmt);
   const runs = r.texts.filter((t) => !t.clipped && norm(t.text));
-  const joined = norm(r.visibleText ?? runs.map((t) => t.text).join(" "));
+  const joined = r.visibleText ?? runs.map((t) => t.text).join(" ");
   const brandNorm = (text: string) => norm(text).replace(/’/g, "'");
   const { required, terms } = requiredCampaignCopy(e, fmt.id);
   const wanted = [
@@ -166,9 +167,10 @@ export function briefFaults(r: Rendered, fmt: BoardFormat, e: Essentials | undef
     ...terms.map((s) => ({ s, rule: "term" })),
   ];
   for (const { s: req, rule } of wanted) {
-    const normalize = rule === "brand" ? brandNorm : norm;
+    const normalize = rule === "brand" ? brandNorm : copyWhitespace;
     const want = normalize(req);
-    if (!normalize(joined).includes(want)) { faults.push({ rule: `${rule}-missing`, detail: `"${req}"`, source: "brief" }); continue; }
+    const present = rule === "brand" ? brandNorm(joined).includes(want) : matchesCampaignCopy(joined, req);
+    if (!present) { faults.push({ rule: `${rule}-missing`, detail: `"${req}"`, source: "brief" }); continue; }
     const parts = runs.filter((t) => { const n = normalize(t.text); return n.length > 1 && (want.includes(n) || n.includes(want)); });
     const small = parts.filter((t) => t.size < minPx - 0.5);
     if (small.length) faults.push({ rule: `${rule}-too-small`, detail: `"${req}" at ${Math.min(...small.map((t) => t.size))}px < ${minPx}px`, source: "brief" });
@@ -182,17 +184,13 @@ export function briefFaults(r: Rendered, fmt: BoardFormat, e: Essentials | undef
     if (isBody && e.bodyFloor !== "minimum" && t.size < bodyPx - 0.5) faults.push({ rule: "body-too-small", detail: `${t.size}px < ${bodyPx}px (body size where seen): "${t.text.slice(0, 50)}"`, source: "brief" });
   }
   if (e.assetUse === "required" && e.assets.length) {
-    const names = new Set(e.assets.map((a) => a.split("/").pop()!.toLowerCase()));
-    const used = r.images.some((i) => {
-      const name = decodeURIComponent(i.src.split(/[?#]/)[0].split("/").pop() ?? "").toLowerCase();
-      return names.has(name);
-    });
-    // An image inlined as data (or fetched from elsewhere) cannot be traced to a brief file by name: say so instead
-    // of calling it missing. A piece passes only with a linked brief file.
+    const used = r.images.some((image) => e.assets.some((name) => isSuppliedImage(name, image.src, project)));
+    const names = e.assets.join(", ");
+    // Unlisted URLs and data URLs cannot be traced to a supplied file.
     const other = r.images.filter((i) => /^(data:|https?:)/.test(i.src));
     if (!used) faults.push(other.length
-      ? { rule: "asset-unproven", detail: `${other.length} image(s) inlined or remote; link one of ${[...names].join(", ")} by its file`, source: "brief" }
-      : { rule: "asset-missing", detail: `none of the brief's images (${[...names].join(", ")})`, source: "brief" });
+      ? { rule: "asset-unproven", detail: `${other.length} image(s) inlined or remote; link one of ${names} by its recorded path`, source: "brief" }
+      : { rule: "asset-missing", detail: `none of the brief's images (${names})`, source: "brief" });
   }
   return faults;
 }

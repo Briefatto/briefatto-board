@@ -80,11 +80,21 @@ const projectFormatsSchema = z.array(z.object({
 export function loadProjectFormats(project: string): BoardFormat[] {
   const path = join(project, "formats.json");
   if (!existsSync(path)) return FORMATS;
+  let json: unknown;
   try {
-    return projectFormatsSchema.parse(JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, "")));
+    json = JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, ""));
   } catch (error) {
     throw new Error(`Invalid board formats in ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
+  const result = projectFormatsSchema.safeParse(json, { reportInput: true });
+  if (result.success) return result.data;
+  const details = result.error.issues.map((issue) => {
+    const field = issue.path.reduce<string>((location, part) =>
+      location + (typeof part === "number" ? `[${part}]` : `.${String(part)}`), "formats.json");
+    if (issue.code === "invalid_type" && issue.input === undefined) return `${field} is required.`;
+    return `${field}: ${issue.message}.`;
+  });
+  throw new Error(`Invalid board formats in ${path}: ${details.join(" ")}`);
 }
 
 /** Find a piece's project without depending on the shell's working directory. */
