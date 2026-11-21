@@ -11,7 +11,16 @@ You can also install the skill through skills.sh.
 npx skills add Briefatto/briefatto-board
 ```
 
-[Adopt an existing site or start a brand from a brief](#start).
+Or as a Claude Code plugin.
+
+```sh
+claude plugin marketplace add Briefatto/briefatto-board
+claude plugin install briefatto-board@briefatto
+```
+
+**Blind-tested.** On a real open-source site, all four blind judges ranked Briefatto Board's work first, ahead of Impeccable, Taste Skill and Hallmark. [See every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/).
+
+[Adopt an existing site or start a brand from a brief](#start). [Guides for Claude Code, Cursor, Codex and more](https://briefatto.com/guides/).
 
 <p align="center">
   <picture>
