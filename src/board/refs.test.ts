@@ -34,6 +34,16 @@ test("queues reference URLs in one browser, loads lazy images and removes fixed 
     } else if (request.url === "/mostly-chrome") {
       response.setHeader("Content-Type", "text/html");
       response.end('<!doctype html><nav style="height:70vh">Site navigation</nav><main>Page content</main>');
+    } else if (request.url === "/sparse-reference") {
+      response.setHeader("Content-Type", "text/html");
+      response.end(`<!doctype html><style>
+        body { margin: 0; font: 18px system-ui; }
+        main { width: 720px; margin: 120px auto; }
+        h1 { font-size: 54px; }
+        pre { background: #f7f4ed; padding: 24px; }
+      </style><main><h1>One file for every editor</h1>
+      <p>Check a shared config into your project.</p>
+      <pre>root = true\n\n[*]\nindent_style = space\nindent_size = 2</pre></main>`);
     } else if (request.url === "/mostly-empty") {
       response.setHeader("Content-Type", "text/html");
       response.end(`<!doctype html><style>
@@ -64,16 +74,17 @@ test("queues reference URLs in one browser, loads lazy images and removes fixed 
   await assert.rejects(captureReferences(project.path, [{ url: site, image: "example.png" }, { url: site, image: "EXAMPLE.PNG" }]), /listed more than once/);
   assert.equal(launches.mock.callCount(), 0);
 
-  const [reference, missing, chrome, empty, anchored] = await captureReferences(project.path, [
+  const [reference, missing, chrome, sparse, empty, anchored] = await captureReferences(project.path, [
     { url: `${site}/reference`, image: "example.png" },
     { url: `${site}/missing`, image: "missing.png" },
     { url: `${site}/mostly-chrome`, image: "chrome.png" },
+    { url: `${site}/sparse-reference`, image: "sparse.png" },
     { url: `${site}/mostly-empty`, image: "empty.png" },
     { url: `${site}/anchored#artwork`, image: "anchored.png" },
   ]);
   assert.equal(launches.mock.callCount(), 1);
-  const navigation = visits.filter((path) => ["/reference", "/art", "/missing", "/mostly-chrome", "/mostly-empty", "/anchored"].includes(path));
-  assert.deepEqual(navigation, ["/reference", "/art", "/missing", "/mostly-chrome", "/mostly-empty", "/anchored"]);
+  const expectedNavigation = ["/reference", "/art", "/missing", "/mostly-chrome", "/sparse-reference", "/mostly-empty", "/anchored"];
+  assert.deepEqual(visits.filter((path) => expectedNavigation.includes(path)), expectedNavigation);
   assert.ok(visits.includes("/missing-image"));
   assert.ok(visits.includes("/missing-background"));
 
@@ -81,6 +92,7 @@ test("queues reference URLs in one browser, loads lazy images and removes fixed 
   assert.deepEqual(reference, { url: `${site}/reference`, output, warnings: [] });
   assert.match("error" in missing ? missing.error : "", /HTTP 404/);
   assert.match("warnings" in chrome ? chrome.warnings.join("\n") : "", /mostly page chrome.*Retake/);
+  assert.deepEqual(sparse, { url: `${site}/sparse-reference`, output: join(project.path, "refs", "sparse.png"), warnings: [] });
   assert.match("warnings" in empty ? empty.warnings.join("\n") : "", /mostly empty.*Retake/);
   assert.match("warnings" in empty ? empty.warnings.join("\n") : "", /visible image.*did not load/);
   const capture = readFileSync(output);
@@ -95,7 +107,7 @@ test("queues reference URLs in one browser, loads lazy images and removes fixed 
   const [retry] = await captureReferences(project.path, [{ url: `${site}/missing`, image: "example.png" }]);
   assert.match("error" in retry ? retry.error : "", /HTTP 404/);
   assert.deepEqual(readFileSync(output), capture);
-  assert.deepEqual(readdirSync(join(project.path, "refs")).sort(), ["anchored.png", "chrome.png", "empty.png", "example.png"]);
+  assert.deepEqual(readdirSync(join(project.path, "refs")).sort(), ["anchored.png", "chrome.png", "empty.png", "example.png", "sparse.png"]);
 });
 
 test("renders image and words references in manifest order as one PNG", async () => {

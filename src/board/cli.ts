@@ -8,7 +8,7 @@ import { check } from "./check.js";
 import { diffBoards } from "./diff.js";
 import { findProjectFormats, FORMATS, formatFiles, formatOfFile, isFormatFile, loadProjectFormats } from "./formats.js";
 import { freeze, previewFreeze, renderBoard, type Board } from "./freeze.js";
-import { boardValueKey, hasOutsideValues, isPieceFile, outputFiles, pieceStatusText, pieceVersion, pieceVersionText, readPiece, recordValueObservation } from "./pieces.js";
+import { boardValueKey, declareCampaign, hasOutsideValues, isPieceFile, outputFiles, pieceStatusText, pieceVersion, pieceVersionText, readPiece, recordValueObservation } from "./pieces.js";
 import { captureReferences, writeReferenceSheet } from "./refs.js";
 import { MissingChromiumError, Renderer } from "./render.js";
 import { writeSheet, writeStylescape, type SheetItem } from "./sheet.js";
@@ -54,13 +54,48 @@ function line(x: Awaited<ReturnType<typeof check>>[number], piece?: ReturnType<t
     (c?.resizedFrom?.length ? `; note: same thirds arrangement as ${c.resizedFrom.join(", ")} on a different shape` : "") +
     (family ? `; family ${family.name}${family.declared ? "" : " (nearest shape)"}: ${family.beside.join("; ")}` : "") +
     `; checks ran: ${x.checks.ran.join(", ")}` +
-    (x.checks.skipped.length ? `; checks skipped: ${x.checks.skipped.map(({ check, reason }) => `${check} (${reason})`).join(", ")}` : "");
+    (x.checks.skipped.length ? `; checks skipped: ${x.checks.skipped.map(({ check, reason }) => `${check} (${reason})`).join(", ")}` : "") +
+    ("briefScope" in x ? `; ${x.briefScope}` : "");
 }
 
 /** The floor and the brief's requirements on a direction's own samples, before anyone picks or freezes it. */
 async function checkSamples(dir: string, b: Board, r: Renderer) {
   const formats = loadProjectFormats(resolve(dir, "..", ".."));
   return check(b, formatFiles(dir, { formats }), { renderer: r, out: join(dir, "check.json"), consistency: true, formats, brief: true });
+}
+
+async function checkPieces(boardDir: string, board: Board | null, files: string[], opts: {
+  out: string; formats?: typeof FORMATS; consistency?: boolean; brief?: boolean; renderer?: Renderer; requireBriefCoverage?: boolean;
+}) {
+  const sources = board ? files.map(readPiece) : [];
+  const previous: Board[] = [];
+  const designs = new Map<number, string>();
+  if (board) {
+    for (let version = board.version - 1; version >= 1; version--) {
+      if (existsSync(join(`${boardDir}.${versionLabel(version)}`, "board.json"))) previous.push(readBoardVersion(boardDir, board, version));
+    }
+    for (const snapshot of [board, ...previous]) {
+      const design = readFrozenDesign(boardDir, board, snapshot);
+      if (design !== undefined) designs.set(snapshot.version, design);
+    }
+  }
+  const { out, ...options } = opts;
+  const res = await check(board, files, { ...options, previous, designs });
+  const current = board && versionLabel(board.version);
+  const versions = board ? sources.map(({ boardVersion }) => pieceVersion(boardVersion, board.version)) : [];
+  if (board) {
+    const boardKey = boardValueKey(board);
+    res.forEach((x, i) => {
+      if ("outsideValues" in x) recordValueObservation(x.file, boardKey, {
+        sourceHash: sources[i].sourceHash,
+        usesOutsideValues: x.outsideValues.length > 0,
+      });
+    });
+  }
+  writeFileSync(out, JSON.stringify(res.map((x, i) => ({ ...x, ...versions[i], checkedAgainst: current ?? undefined })), null, 2));
+  if (res.some((x) => !x.pass)) process.exitCode = 1;
+  res.forEach((x, i) => console.log(line(x, versions[i], current ?? undefined)));
+  console.log(out);
 }
 
 async function main() {
@@ -194,7 +229,7 @@ async function main() {
     }
     const { board: b, changed } = await freeze({
       ...sources, boardDir, name, note, extract: args.includes("--extract"),
-      onValidated: () => console.log("PASS DESIGN.md: computed colours, font families and sizes, required quotations, font load sources, line integrity, project file references."),
+      onValidated: () => console.log("PASS DESIGN.md: generated source and sample values, validated prose and file references."),
       prepareCurrent: (guide, source) => prepareStandingInstructions(project, guide, source),
     });
     if (!changed) {
@@ -260,55 +295,63 @@ async function main() {
     const files = pieces.flatMap(expand).map((f) => resolve(f))
       .filter(consistency || !board ? (f) => isFormatFile(f, formats ?? findProjectFormats(f)) : isPieceFile);
     if (!files.length) throw new Error("No piece HTML files matched.");
-    const out = join(dirname(files[0]), "check.json");
-    const sources = board ? files.map(readPiece) : [];
-    const previous: Board[] = [];
-    const designs = new Map<number, string>();
-    if (board) {
-      for (let version = board.version - 1; version >= 1; version--) {
-        if (existsSync(join(`${boardDir}.${versionLabel(version)}`, "board.json"))) previous.push(readBoardVersion(boardDir, board, version));
-      }
-      for (const snapshot of [board, ...previous]) {
-        const design = readFrozenDesign(boardDir, board, snapshot);
-        if (design !== undefined) designs.set(snapshot.version, design);
-      }
-    }
-    const res = await check(board, files, { consistency, formats, previous, brief, designs });
-    const current = board && versionLabel(board.version);
-    const versions = board ? sources.map(({ boardVersion }) => pieceVersion(boardVersion, board.version)) : [];
-    if (board) {
-      const boardKey = boardValueKey(board);
-      res.forEach((x, i) => {
-        if ("outsideValues" in x) recordValueObservation(x.file, boardKey, {
-          sourceHash: sources[i].sourceHash,
-          usesOutsideValues: x.outsideValues.length > 0,
-        });
-      });
-    }
-    writeFileSync(out, JSON.stringify(res.map((x, i) => ({ ...x, ...versions[i], checkedAgainst: current ?? undefined })), null, 2));
-    if (res.some((x) => !x.pass)) process.exitCode = 1;
-    res.forEach((x, i) => console.log(line(x, versions[i], current ?? undefined)));
-    console.log(out);
+    await checkPieces(boardDir, board, files, { consistency, formats, brief, out: join(dirname(files[0]), "check.json") });
     return;
   }
   if (cmd === "kit") {
-    const project = resolve(args[0]);
-    const dir = join(project, flag("dir") ?? "outputs");
+    const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
+      dir: { type: "string" }, campaign: { type: "string" },
+    } });
+    if (positionals.length > 1) throw new Error("Usage: board kit [project] [--dir <delivery-dir>] [--campaign <name>]");
+    const project = resolve(positionals[0] ?? ".");
+    const dir = resolve(project, values.dir ?? "outputs");
     const formats = loadProjectFormats(project);
-    const have = formats.filter((f) => existsSync(join(dir, `${f.id}.png`)));
-    const item = (f: typeof FORMATS[number]): SheetItem => ({ label: f.label, png: join(dir, `${f.id}.png`), width: f.width, height: f.height });
-    const wide = ["hero", "og", "link"];
     const boardDir = join(project, "board");
-    const b = existsSync(join(boardDir, "board.json")) ? readBoard(boardDir) : null;
+    const isCampaign = existsSync(join(project, "brief.md"));
+    const directories = relative(project, dir).split(/[\\/]/);
+    if (isCampaign && (directories[0].toLowerCase() === "directions" || directories.some((part) => /(?:^|-)review$/i.test(part)))) {
+      throw new Error("Direction samples and review folders are for review. Use the delivery directory with board kit.");
+    }
+    const board = existsSync(join(boardDir, "board.json")) ? readBoard(boardDir) : null;
+    const renderer = new Renderer();
     const out = join(dir, "kit-sheet.png");
-    await writeSheet(join(dir, "kit-sheet.html"), out, {
-      title: `${briefTitle(project)}: kit${b ? ` from the frozen board (${b.direction.title})` : ""}`,
-      swatches: b?.palette.map((p) => p.hex), fonts: b?.fonts.map((f) => `${f.family} ${f.weights.join("/")}`),
-      rowHeight: 400,
-      rows: formats === FORMATS
-        ? [{ items: have.filter((f) => wide.includes(f.id)).map(item) }, { items: have.filter((f) => !wide.includes(f.id)).map(item) }]
-        : [{ items: have.map(item) }],
-    });
+    try {
+      // Exact format names in the delivery directory define the kit. Direction samples, review folders and later
+      // named pieces stay outside it. A review marker also excludes a canonical filename.
+      const pieces = existsSync(dir) ? formatFiles(dir, { formats }).map((file) => ({ file, ...readPiece(file) })) : [];
+      const deliverables = pieces.filter(({ reviewOnly }) => !reviewOnly);
+      const receivedFormats = new Set(deliverables.map(({ file }) => formatOfFile(file, formats).id));
+      if (isCampaign) {
+        if (!board) throw new Error("Freeze the approved board before checking the launch kit.");
+        if (!deliverables.length) throw new Error(`No kit deliverables in ${dir}. Save final pieces as <format>.html.`);
+        if (receivedFormats.size !== deliverables.length) throw new Error(`More than one kit deliverable has the same format in ${dir}.`);
+        const campaign = values.campaign?.trim() ?? deliverables.find((piece) => piece.campaign)?.campaign ??
+          (board.name === "Brief" ? `${basename(project)} launch` : board.name);
+        if (!campaign || /[\r\n]/.test(campaign)) throw new Error("Give the campaign a non-empty name on one line.");
+        for (const piece of deliverables) {
+          if (piece.campaign && piece.campaign !== campaign) {
+            throw new Error(`${piece.file} declares campaign ${JSON.stringify(piece.campaign)}; expected ${JSON.stringify(campaign)}.`);
+          }
+        }
+        const files = deliverables.map(({ file }) => file);
+        for (const file of files) declareCampaign(file, campaign);
+        await checkPieces(boardDir, board, files, { formats, renderer, requireBriefCoverage: true, out: join(dir, "kit-check.json") });
+      } else if (values.campaign !== undefined) {
+        throw new Error("Add brief.md before checking a campaign kit.");
+      }
+      const hasReview = new Set(pieces.filter(({ reviewOnly }) => reviewOnly).map(({ file }) => formatOfFile(file, formats).id));
+      const have = formats.filter((f) => isCampaign ? receivedFormats.has(f.id) : !hasReview.has(f.id) && existsSync(join(dir, `${f.id}.png`)));
+      const item = (f: typeof FORMATS[number]): SheetItem => ({ label: f.label, png: join(dir, `${f.id}.png`), width: f.width, height: f.height });
+      const wide = ["hero", "og", "link"];
+      await writeSheet(join(dir, "kit-sheet.html"), out, {
+        title: `${briefTitle(project)}: kit${board ? ` from the frozen board (${board.direction.title})` : ""}`,
+        swatches: board?.palette.map((p) => p.hex), fonts: board?.fonts.map((f) => `${f.family} ${f.weights.join("/")}`),
+        rowHeight: 400,
+        rows: formats === FORMATS
+          ? [{ items: have.filter((f) => wide.includes(f.id)).map(item) }, { items: have.filter((f) => !wide.includes(f.id)).map(item) }]
+          : [{ items: have.map(item) }],
+      }, undefined, renderer);
+    } finally { await renderer.close(); }
     console.log(out);
     return;
   }

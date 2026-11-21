@@ -66,6 +66,7 @@ function authoredFixture(project: string) {
 }
 
 const freezeStamp = /^<!-- briefatto-board:freeze (v\d+) (\d{4}-\d{2}-\d{2}) sha256:([a-f\d]{64}) -->\r?\n/gm;
+const generatedBlock = /\r?\n\r?\n<!-- briefatto-board:generated begin -->[\s\S]*?<!-- briefatto-board:generated end -->\r?\n$/;
 const designHash = (markdown: string) => createHash("sha256").update(markdown).digest("hex");
 
 test("the design guide declares secondary font families alongside its type roles", () => {
@@ -222,6 +223,7 @@ test("a freeze versions changes to linked sample and guide assets at the same pa
   const css = join(direction, "nested.css");
   writeFileSync(css, "/* first */");
   runBoard(project.path, "freeze", ".", "pick");
+  const guideHash = readBoard(current).designHash;
 
   const fingerprint = join(current, SOURCE_ASSETS_FILE);
   const original = readFileSync(fingerprint);
@@ -238,7 +240,7 @@ test("a freeze versions changes to linked sample and guide assets at the same pa
   writeFileSync(join(project.path, "copy.txt"), "second copy");
   runBoard(project.path, "freeze", ".", "pick");
   assert.equal(readBoard(current).version, 3);
-  assert.equal(readBoard(current).designHash, designHash(draft));
+  assert.equal(readBoard(current).designHash, guideHash);
   assert.match(runBoard(project.path, "freeze", ".", "pick"), /no change \(board v3\)/);
 });
 
@@ -303,9 +305,10 @@ test("default freeze preserves the authored guide and archives a prose-only edit
   assert.ok(boardStamp, "the published guide carries its version, date and content hash");
   assert.equal(boardStamp[1], "v1");
   assert.equal(boardStamp[2], readBoard(current).frozenAt.slice(0, 10));
-  assert.equal(boardStamp[3], designHash(draft));
-  assert.equal(readBoard(current).designHash, designHash(draft));
-  assert.equal(first.replace(freezeStamp, ""), draft, "stamping preserves every authored byte");
+  const unsigned = first.replace(freezeStamp, "");
+  assert.equal(boardStamp[3], designHash(unsigned));
+  assert.equal(readBoard(current).designHash, designHash(unsigned));
+  assert.equal(unsigned.replace(generatedBlock, ""), draft, "stamping preserves every authored byte");
   assert.equal(readFileSync(join(current, "DESIGN.md"), "utf8"), first);
 
   assert.match(runBoard(project.path, "freeze", ".", "pick"), /no change \(board v1\)/);
@@ -317,8 +320,9 @@ test("default freeze preserves the authored guide and archives a prose-only edit
   assert.match(runBoard(project.path, "freeze", ".", "pick"), /PASS DESIGN\.md/);
   const nextDraft = draft.replace("Keep the sign plain.", freshInstruction);
   const second = readFileSync(design, "utf8");
-  assert.deepEqual([...second.matchAll(freezeStamp)].map((stamp) => [stamp[1], stamp[3]]), [["v2", designHash(nextDraft)]]);
-  assert.equal(second.replace(freezeStamp, ""), nextDraft);
+  const nextUnsigned = second.replace(freezeStamp, "");
+  assert.deepEqual([...second.matchAll(freezeStamp)].map((stamp) => [stamp[1], stamp[3]]), [["v2", designHash(nextUnsigned)]]);
+  assert.equal(nextUnsigned.replace(generatedBlock, ""), nextDraft);
   assert.equal(readFileSync(join(current, "DESIGN.md"), "utf8"), second);
   assert.equal(readFileSync(join(archive, "DESIGN.md"), "utf8"), first, "the archive carries the old prose and stamp");
   assert.deepEqual(readFileSync(join(archive, "samples", "hero.html")), readFileSync(join(current, "samples", "hero.html")));
@@ -357,12 +361,70 @@ test("freeze preview shows the exact claims and their sources before a guide exi
   assert.ok(sample.colours.includes("rgb(14, 26, 43)"));
   assert.ok(sample.fontFamilies.includes("serif"));
   assert.ok(sample.fontSizes.includes("32.125px"));
+  assert.match(preview.design, /> Keep the Friday headline\./);
+  assert.match(preview.design, /\| headline \| `font-family: serif` \| 32\.125px \|/);
   assert.deepEqual(readdirSync(project.path, { recursive: true }), tree);
 
   writeFileSync(join(project.path, "DESIGN.md"), draft);
   const output = failedBoard(project.path, "freeze", ".", "pick");
   assert.match(output, /font-size:.*"32\.125px" from directions\/pick\/hero\.html/);
-  assert.match(output, /client-constraint:.*"Keep the Friday headline\." verbatim from refs\/notes\.md:4/);
+  assert.doesNotMatch(output, /client-constraint:/);
+});
+
+test("prose-only freeze records a plain brief and refreshes CSS measurements and confirmed quotes", () => {
+  using project = scratch();
+  authoredFixture(project.path);
+  const guide = join(project.path, "DESIGN.md");
+  const hero = join(project.path, "directions", "pick", "hero.html");
+  const notes = join(project.path, "refs", "notes.md");
+  mkdirSync(join(project.path, "refs"));
+  writeFileSync(join(project.path, "brief.md"), [
+    "We're launching a small version-checking CLI. It reports what's out of line.",
+    "",
+    "The exact example commands are `tool record` and `tool check`. Please use “Know your tools. Get to work.” and “Read the quickstart”. Don't promise automatic repairs.",
+    "",
+    'The words we\'ve signed off are "Two films. Home by seven.", "Book a seat" and "Open Fridays.".',
+  ].join("\n"));
+  writeFileSync(join(project.path, "essentials.json"), JSON.stringify({ requiredByFormat: { hero: ["Open Fridays."] } }));
+  writeFileSync(notes, "```constraint\nKeep the commands beside the diagram.\n```\n");
+  const prose = "# Workbench\r\n\r\n## Layout\r\nKeep the layout in two parts.\r\n\r\n## Voice\r\nWrite like a teammate who reads the docs.\r\n";
+  writeFileSync(guide, prose);
+  const source = readFileSync(hero, "utf8").replace("<h1 ", '<h1 data-board-role="launch headline" ');
+  writeFileSync(hero, source);
+
+  const preview = JSON.parse(runBoard(project.path, "freeze", ".", "pick", "--dry-run"));
+  assert.equal(readFileSync(guide, "utf8"), prose);
+  assert.deepEqual(preview.designFindings, []);
+  assert.match(preview.design, /> We're launching a small version-checking CLI\. It reports what's out of line\./);
+  for (const copy of ["Know your tools. Get to work.", "tool record", "tool check", "Read the quickstart", "Two films. Home by seven.", "Book a seat"]) {
+    assert.ok(preview.design.includes(`| Approved copy | ${copy} |`), copy);
+  }
+  assert.match(preview.design, /\| Required on hero \| Open Fridays\. \| brief\.md:5 \|/);
+  assert.match(preview.design, /> Don't promise automatic repairs\./);
+  assert.match(preview.design, /> Keep the commands beside the diagram\./);
+  assert.match(preview.design, /\| launch headline \| `font-family: serif` \| 32px \|/);
+  assert.match(preview.design, /\| bg \| `colour: rgb\(14, 26, 43\)` \|/);
+
+  assert.match(runBoard(project.path, "freeze", ".", "pick"), /PASS DESIGN\.md/);
+  const first = readFileSync(guide, "utf8");
+  assert.equal(first.replace(freezeStamp, ""), preview.design);
+  assert.equal(preview.design.replace(generatedBlock, ""), prose);
+
+  writeFileSync(guide, first.replace("32px | 400 normal", "999px | 400 normal"));
+  writeFileSync(hero, source.replace("32px serif", "35.5px serif").replace("#0e1a2b", "#102030"));
+  appendFileSync(notes, "\n```constraint\nKeep the two commands legible.\n```\n");
+  assert.match(runBoard(project.path, "freeze", ".", "pick"), /PASS DESIGN\.md/);
+  const second = readFileSync(guide, "utf8");
+  assert.equal(second.replace(freezeStamp, "").replace(generatedBlock, ""), prose);
+  assert.match(second, /\| launch headline \| `font-family: serif` \| 35\.5px \|/);
+  assert.match(second, /> Keep the two commands legible\./);
+  assert.doesNotMatch(second, /999px|rgb\(14, 26, 43\)/);
+
+  writeFileSync(guide, second.replace("Keep the layout in two parts.", "Use #000000 for the approved ground."));
+  assert.match(failedBoard(project.path, "freeze", ".", "pick"), /colour:.*contradicts.*"#000000".*Use "rgb\(16, 32, 48\)"/);
+
+  writeFileSync(guide, second.replace("Keep the layout in two parts.", "The launch headline font size is 32px."));
+  assert.match(failedBoard(project.path, "freeze", ".", "pick"), /font-size:.*"32px" for "launch headline".*Use "35\.5px"/);
 });
 
 test("freeze blocks missing campaign copy in selected samples and tagged outputs", () => {
@@ -424,8 +486,8 @@ test("failed authored validation reports each field and leaves the current versi
   assert.match(output, /colour:.*"rgb\(14, 26, 43\)" from directions\/pick\/hero\.html/);
   assert.match(output, /font-family:.*"serif" from directions\/pick\/hero\.html/);
   assert.match(output, /font-size:.*"32px" from directions\/pick\/hero\.html/);
-  assert.match(output, /brand-fact:.*"\*\*Who\.\*\* A bakery on the quay\." verbatim from brief\.md:3/);
-  assert.match(output, /campaign-copy:.*"Headline" row with "Open Fridays\." from brief\.md:6/);
+  assert.match(output, /brand-fact:.*"\*\*Who\.\*\* A bakery on the quay\." from brief\.md:3 verbatim/);
+  assert.match(output, /campaign-copy:.*"Headline" with "Open Fridays\." from brief\.md:6/);
   assert.deepEqual(readFileSync(join(current, "board.json")), lastBoard);
   assert.deepEqual(readFileSync(join(current, "DESIGN.md")), lastDesign);
   assert.equal(readFileSync(design, "utf8"), invalid, "a failed draft stays available for correction without a stamp");
@@ -618,6 +680,7 @@ test("a frozen guide's exact colours remain valid after palette clustering", () 
   assert.match(runBoard(project.path, "check", ".", "outputs/hero.html", "--consistency"), /^PASS hero:.*off-palette 0/m);
 
   writeFileSync(draft, guide("#F4F4F2"));
+  writeFileSync(sample, page("#f4f4f2"));
   runBoard(project.path, "freeze", ".", "pick");
   assert.match(runBoard(project.path, "check", ".", "outputs/notice.html"), /uses #FAF9F7, a colour in v1, outside v2/);
 });

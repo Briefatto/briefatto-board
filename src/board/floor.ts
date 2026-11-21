@@ -9,7 +9,7 @@ import { env, execPath, platform } from "node:process";
 import type { Page } from "playwright";
 import type { Rendered } from "./render.js";
 import { bodyTextPx, minTextPx, MIN_SEEN_TEXT_PX, type BoardFormat } from "./formats.js";
-import { norm, urlLike, type Essentials } from "./essentials.js";
+import { norm, requiredCampaignCopy, urlLike, type Essentials } from "./essentials.js";
 
 export interface FloorFault { rule: string; detail: string; source: "impeccable" | "render" | "brief" }
 export interface DismissedFloorFault extends FloorFault { reason: string }
@@ -159,13 +159,13 @@ export function briefFaults(r: Rendered, fmt: BoardFormat, e: Essentials | undef
   const runs = r.texts.filter((t) => !t.clipped && norm(t.text));
   const joined = norm(r.visibleText ?? runs.map((t) => t.text).join(" "));
   const brandNorm = (text: string) => norm(text).replace(/’/g, "'");
+  const { required, terms } = requiredCampaignCopy(e, fmt.id);
   const wanted = [
-    ...(brand && brandNorm(joined).includes(brandNorm(brand)) ? [{ s: brand, rule: "brand" }] : []),
-    ...(e?.required ?? []).map((s) => ({ s, rule: "essential" })),
-    ...(e?.termsExempt?.includes(fmt.id) ? [] : (e?.terms ?? []).map((s) => ({ s, rule: "term" }))),
+    ...(brand && !(fmt.id === "hero" && urlLike(brand)) && brandNorm(joined).includes(brandNorm(brand)) ? [{ s: brand, rule: "brand" }] : []),
+    ...required.map((s) => ({ s, rule: "essential" })),
+    ...terms.map((s) => ({ s, rule: "term" })),
   ];
   for (const { s: req, rule } of wanted) {
-    if (fmt.id === "hero" && urlLike(req)) continue;
     const normalize = rule === "brand" ? brandNorm : norm;
     const want = normalize(req);
     if (!normalize(joined).includes(want)) { faults.push({ rule: `${rule}-missing`, detail: `"${req}"`, source: "brief" }); continue; }

@@ -11,6 +11,8 @@ import { join, relative } from "node:path";
 export interface Essentials {
   /** Strings every piece must show (whitespace and case are ignored). URL-like strings are not required on the website hero. */
   required: string[];
+  /** Extra literal requirements for an individual format. */
+  requiredByFormat?: Record<string, string[]>;
   /** Body copy: where a piece sets it, it must be at body size (see floor.ts). */
   body: string[];
   /** The offer's terms the reader needs, quoted from the brief's copy ("until March", "Pick it up"): every piece keeps
@@ -49,8 +51,12 @@ export function loadEssentials(project: string): Essentials {
   const assets = images(join(project, "assets"), project);
   const own = join(project, "essentials.json");
   if (existsSync(own)) {
-    const e = JSON.parse(readFileSync(own, "utf8"));
-    return { required: e.required ?? [], body: e.body ?? [], terms: e.terms ?? [], termsExempt: e.termsExempt ?? [], bodyFloor: e.bodyFloor ?? "minimum", assets: e.assets ?? assets, assetUse: e.assetUse ?? (assets.length ? "required" : "optional"), source: "essentials.json" };
+    const e = JSON.parse(readFileSync(own, "utf8").replace(/^\uFEFF/, ""));
+    if (e.requiredByFormat !== undefined && (
+      !e.requiredByFormat || typeof e.requiredByFormat !== "object" || Array.isArray(e.requiredByFormat) ||
+      Object.values(e.requiredByFormat).some((copies) => !Array.isArray(copies) || copies.some((copy) => typeof copy !== "string" || !copy.trim()))
+    )) throw new Error(`${own}: requiredByFormat must map format IDs to arrays of non-empty strings.`);
+    return { required: e.required ?? [], requiredByFormat: e.requiredByFormat, body: e.body ?? [], terms: e.terms ?? [], termsExempt: e.termsExempt ?? [], bodyFloor: e.bodyFloor ?? "minimum", assets: e.assets ?? assets, assetUse: e.assetUse ?? (assets.length ? "required" : "optional"), source: "essentials.json" };
   }
   const briefPath = join(project, "brief.md");
   if (!existsSync(briefPath)) return { required: [], body: [], terms: [], termsExempt: [], bodyFloor: "minimum", assets, assetUse: assets.length ? "required" : "optional", source: "none" };
@@ -71,3 +77,15 @@ export function loadEssentials(project: string): Essentials {
 
 export const norm = (s: string) => s.toLowerCase().replace(/[–—]/g, "-").replace(/\s+/g, " ").trim();
 export const urlLike = (s: string) => /^[\w-]+(\.[\w-]+)+(\/\S*)?$/i.test(s.trim());
+
+export function requiredCampaignCopy(essentials: Essentials | undefined, format: string) {
+  const shared = essentials?.required ?? [];
+  const terms = essentials?.termsExempt?.includes(format) ? [] : essentials?.terms ?? [];
+  const byFormat = essentials?.requiredByFormat;
+  const specific = byFormat && Object.hasOwn(byFormat, format) ? byFormat[format] : [];
+  const applies = (copy: string) => format !== "hero" || !urlLike(copy);
+  return {
+    required: [...new Set([...shared.filter(applies), ...specific])],
+    terms: terms.filter(applies),
+  };
+}

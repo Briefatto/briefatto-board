@@ -6,6 +6,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { loadAdoption, localAdoptionAssets, withAdoptedPages } from "./adoption.js";
 import { readConstraintSources } from "./constraints.js";
 import { designMd, describeChange } from "./design.js";
+import { withGeneratedDesign } from "./design-sections.js";
 import { briefExpectations, computedSample, designHash, stampDesign, unsignedDesign, validateDesign, type SourceQuote } from "./design-validation.js";
 import { FORMATS, formatById, formatFiles, formatOfFile, isFormatFile, loadProjectFormats, type BoardFormat } from "./formats.js";
 import { briefFaults } from "./floor.js";
@@ -25,6 +26,8 @@ export interface Board {
   version: number;
   /** SHA-256 of the authored guide before the freeze stamp. */
   designHash?: string;
+  /** Hash of the generated sections for a guide made with --extract. */
+  extractedDesignHash?: string;
   note: string;
   name: string;
   direction: { id: string; title: string; text: string };
@@ -216,18 +219,16 @@ async function renderDirectionPages(directionDir: string, project: string, sampl
   return { id: basename(directionDir), title, text };
 }
 
-function directionBrief(project: string): string {
+function projectBrief(project: string): string | undefined {
   const path = join(project, "brief.md");
-  return existsSync(path) ? readFileSync(path, "utf8") : "";
+  return existsSync(path) ? readFileSync(path, "utf8") : undefined;
 }
 
-function constraintSources(project: string, directionDir: string | undefined, previous: Board | undefined): SourceQuote[] {
+function constraintSources(project: string, previous: Board | undefined): SourceQuote[] {
   const quotes = new Map((previous?.constraints ?? []).map((value, index) =>
-    [value, { value, source: `board/board.json constraints[${index}]` }]));
-  if (directionDir) {
-    for (const { value, line } of readConstraintSources(join(project, "refs", "notes.md"))) {
-      quotes.set(value, { value, source: `refs/notes.md:${line}` });
-    }
+    [value.replace(/\r\n/g, "\n"), { value, source: `board/board.json constraints[${index}]` }]));
+  for (const { value, line } of readConstraintSources(join(project, "refs", "notes.md"))) {
+    quotes.set(value.replace(/\r\n/g, "\n"), { value, source: `refs/notes.md:${line}` });
   }
   return [...quotes.values()];
 }
@@ -242,7 +243,7 @@ function guideInputs(project: string, board: Pick<Board, "brief" | "essentials">
 async function campaignCopyFindings(project: string, directionDir: string | undefined, essentials: Essentials,
   renders: SampleRenders, renderer: Renderer) {
   const findings: Array<{ source: string; rule: string; detail: string }> = [];
-  if (!essentials.required.length && !essentials.terms.length) return findings;
+  if (!essentials.required.length && !essentials.terms.length && !Object.values(essentials.requiredByFormat ?? {}).some((copy) => copy.length)) return findings;
   const copyOnly = { ...essentials, body: [], assets: [] };
   const inspect = (source: string, r: Rendered, fmt: BoardFormat) => {
     for (const { rule, detail } of briefFaults(r, fmt, copyOnly)) {
@@ -256,8 +257,8 @@ async function campaignCopyFindings(project: string, directionDir: string | unde
     if (directionDir || campaign) inspect(source ?? projectPath(project, file), r, boardFormat);
   }
   const outputs = outputFiles(join(project, "outputs")).filter((file) => {
-    const { campaign } = readPiece(file);
-    return campaign !== undefined && (!campaigns.size || campaigns.has(campaign));
+    const { campaign, reviewOnly } = readPiece(file);
+    return !reviewOnly && campaign !== undefined && (!campaigns.size || campaigns.has(campaign));
   });
   if (outputs.length) {
     const formats = loadProjectFormats(project);
@@ -271,13 +272,21 @@ async function campaignCopyFindings(project: string, directionDir: string | unde
   return findings;
 }
 
-/** Render a read-only preview of the values and wording the guide can claim. */
+function decodeGuide(source: Buffer): string {
+  try {
+    return unsignedDesign(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(source));
+  } catch {
+    throw new Error("FAIL DESIGN.md\n  truncated-line: Expected valid UTF-8.");
+  }
+}
+
+/** Render the proposed guide without updating the project. */
 export async function previewFreeze(opts: BoardSources & { boardDir: string; renderer?: Renderer }) {
   const { boardDir, directionDir } = opts;
   const project = opts.project ?? dirname(boardDir);
   const previous = existsSync(join(boardDir, "board.json")) ? readBoard(boardDir) : undefined;
-  const constraints = constraintSources(project, directionDir, previous);
-  const brief = directionDir ? directionBrief(project) : undefined;
+  const constraints = constraintSources(project, previous);
+  const brief = projectBrief(project);
   const essentials = loadEssentials(project);
   using tmp = mkdtempDisposableSync(join(tmpdir(), "briefatto-freeze-"));
   const renderer = opts.renderer ?? new Renderer();
@@ -287,9 +296,13 @@ export async function previewFreeze(opts: BoardSources & { boardDir: string; ren
     else await renderAdoptedPages(project, tmp.path, renderer, renders);
     const board = { brief, essentials };
     const inputs = guideInputs(project, board, renders, constraints, brief);
+    const guide = join(project, "DESIGN.md");
+    const authored = existsSync(guide) ? decodeGuide(readFileSync(guide)) : "";
+    const design = withGeneratedDesign(authored, inputs);
     const campaignFindings = await campaignCopyFindings(project, directionDir, essentials, renders, renderer);
-    const { source, required, terms, termsExempt } = essentials;
-    return { ...inputs, campaignRequirements: { source, required, terms, termsExempt }, campaignFindings };
+    const designFindings = authored ? await validateDesign(design, project, inputs, renderer) : [];
+    const { source, required, requiredByFormat, terms, termsExempt } = essentials;
+    return { ...inputs, design, designFindings, campaignRequirements: { source, required, requiredByFormat, terms, termsExempt }, campaignFindings };
   } finally {
     if (!opts.renderer) await renderer.close();
   }
@@ -309,15 +322,15 @@ export async function renderBoard(opts: BoardSources & {
   const localAssets = opts.currentBoardDir ? new Set<string>() : undefined;
   try {
     const direction = directionDir
-      ? await renderDirectionPages(directionDir, project, samplesDir, renderer, renders, opts.authoredDesign !== undefined, localAssets)
+      ? await renderDirectionPages(directionDir, project, samplesDir, renderer, renders, opts.authoredDesign !== undefined || !!opts.extract, localAssets)
       : await renderAdoptedPages(project, samplesDir, renderer, renders, localAssets);
     const board = boardFromRenders(name, direction, renders, boardDir);
     board.version = opts.version ?? board.version;
     board.note = opts.note ?? board.note;
-    const brief = directionDir ? directionBrief(project) : undefined;
-    if (brief !== undefined) {
+    const brief = projectBrief(project);
+    if (directionDir) {
       board.essentials = loadEssentials(project);
-      board.brief = brief.trim();
+      board.brief = brief?.trim() ?? "";
       if (board.essentials.assets.length) board.briefAssets = portableImages(project, board.essentials.assets);
     }
     if (board.fontFaces) board.fontFaces = portableFontFaces(project, board.fontFaces);
@@ -328,14 +341,18 @@ export async function renderBoard(opts: BoardSources & {
       if (missing.length) throw new Error(`FAIL campaign copy\n${missing.map(({ source, rule, detail }) => `  ${source}: ${rule}: ${detail}.`).join("\n")}`);
     }
     if (opts.authoredDesign !== undefined) {
-      const inputs = guideInputs(project, board, renders, opts.constraints ?? [], brief);
-      const findings = await validateDesign(opts.authoredDesign, project, inputs, renderer, localAssets);
+      const inputs = guideInputs(project, { brief, essentials: board.essentials ?? loadEssentials(project) }, renders, opts.constraints ?? [], brief);
+      const guide = withGeneratedDesign(opts.authoredDesign, inputs);
+      const findings = await validateDesign(guide, project, inputs, renderer, localAssets);
       if (findings.length) throw new Error(`FAIL DESIGN.md\n${findings.map(({ rule, detail }) => `  ${rule}: ${detail}`).join("\n")}`);
       opts.onValidated?.();
-      board.designHash = designHash(opts.authoredDesign);
-      writeFileSync(join(boardDir, "DESIGN.md"), stampDesign(opts.authoredDesign, { ...board, designHash: board.designHash }));
+      board.designHash = designHash(guide);
+      writeFileSync(join(boardDir, "DESIGN.md"), stampDesign(guide, { ...board, designHash: board.designHash }));
     } else if (opts.extract) {
-      writeFileSync(join(boardDir, "DESIGN.md"), designMd(board));
+      const inputs = guideInputs(project, { ...board, brief }, renders, opts.constraints ?? [], brief);
+      const exactSections = withGeneratedDesign("", inputs);
+      board.extractedDesignHash = designHash(exactSections);
+      writeFileSync(join(boardDir, "DESIGN.md"), designMd({ ...board, constraints: undefined }) + "\n" + exactSections);
     }
     if (localAssets) {
       for (const asset of board.essentials?.assets ?? []) {
@@ -367,21 +384,17 @@ export function freeze(opts: BoardSources & {
       const designPath = join(project, "DESIGN.md");
       if (!existsSync(designPath)) throw new Error("FAIL DESIGN.md\n  missing-guide: Write the project-root DESIGN.md from the rendered pages before freezing.");
       source = readFileSync(designPath);
-      try {
-        authoredDesign = unsignedDesign(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(source));
-      } catch {
-        throw new Error("FAIL DESIGN.md\n  truncated-line: Expected valid UTF-8.");
-      }
+      authoredDesign = decodeGuide(source);
       if (!authoredDesign.trim()) throw new Error("FAIL DESIGN.md\n  missing-guide: The project-root DESIGN.md is empty.");
     }
-    const constraints = constraintSources(project, opts.directionDir, previous);
+    const constraints = constraintSources(project, previous);
     return renderBoard({ ...opts, boardDir: stage, version, constraints, previous, authoredDesign, currentBoardDir: opts.boardDir });
   }, {
     finishStage: async (stage, b) => {
       await writeStylescape(b, stage, `${b.name}: frozen board ${versionLabel(b.version)} (${b.direction.title})`, join(stage, "stylescape.png"), opts.renderer);
     },
-    prepareCurrent: opts.prepareCurrent && ((board, dir) => opts.prepareCurrent!(
-      opts.extract ? designMd(board) : readFileSync(join(dir, "DESIGN.md"), "utf8"), source,
+    prepareCurrent: opts.prepareCurrent && ((_board, dir) => opts.prepareCurrent!(
+      readFileSync(join(dir, "DESIGN.md"), "utf8"), source,
     )),
   });
 }

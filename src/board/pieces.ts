@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { Board } from "./freeze.js";
+import { escapeHtml } from "./sheet-markdown.js";
 
 const digest = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 
@@ -17,17 +18,22 @@ export function outputFiles(dir: string): string[] {
     .sort();
 }
 
-export function readPiece(file: string) {
-  const bytes = readFileSync(file);
-  const sourceHash = digest(bytes);
+const entities = { amp: "&", quot: '"', lt: "<", gt: ">", apos: "'" };
+
+function pieceMetadata(html: string) {
   let boardVersion: string | undefined;
   let campaign: string | undefined;
+  let reviewOnly = false;
+  let headStart = html.startsWith("\uFEFF") ? 1 : 0;
   // Read whole tags so quoted attributes and inert markup cannot declare metadata.
   const markup = /<!--[\s\S]*?-->|<!doctype[^>]*>|<(script|style|title|template|noscript)(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>|<(\/?[a-z][\w:-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>|([^<]+)/gi;
-  for (const [, , tag, attributes, plain] of bytes.toString("utf8").matchAll(markup)) {
+  for (const match of html.matchAll(markup)) {
+    const [source, , tag, attributes, plain] = match;
     if (plain?.trim()) break;
+    if (/^<!doctype\b/i.test(source)) headStart = match.index + source.length;
     if (!tag) continue;
     const tagName = tag.toLowerCase();
+    if (tagName === "html" || tagName === "head") headStart = match.index + source.length;
     if (["html", "head", "base", "link"].includes(tagName)) continue;
     if (tagName !== "meta") break;
     const values = new Map<string, string>();
@@ -35,12 +41,39 @@ export function readPiece(file: string) {
       const key = name.toLowerCase();
       if (!values.has(key)) values.set(key, doubleQuoted ?? singleQuoted ?? unquoted);
     }
-    const label = values.get("content")?.trim() ?? "";
+    const label = values.get("content")?.replace(/&(amp|quot|lt|gt|apos);/g, (_, key: keyof typeof entities) => entities[key]).trim() ?? "";
     const name = values.get("name")?.toLowerCase();
     if (name === "board-version" && /^v[1-9]\d*$/.test(label) && Number.isSafeInteger(Number(label.slice(1)))) boardVersion ??= label;
     if (name === "board-campaign" && label) campaign ??= label;
+    if (name === "board-purpose" && label.toLowerCase() === "review") reviewOnly = true;
   }
-  return { sourceHash, boardVersion, campaign };
+  return { boardVersion, campaign, reviewOnly, headStart };
+}
+
+export function readPiece(file: string) {
+  const bytes = readFileSync(file);
+  const { boardVersion, campaign, reviewOnly } = pieceMetadata(bytes.toString("utf8"));
+  return { sourceHash: digest(bytes), boardVersion, campaign, reviewOnly };
+}
+
+export function declareCampaign(file: string, name: string) {
+  const bytes = readFileSync(file);
+  const html = bytes.toString("utf8");
+  const { campaign, headStart, reviewOnly } = pieceMetadata(html);
+  if (reviewOnly) throw new Error(`${file} is marked for review.`);
+  if (campaign === name) return;
+  if (campaign) throw new Error(`${file} declares campaign ${JSON.stringify(campaign)}; expected ${JSON.stringify(name)}.`);
+  if (!bytes.equals(Buffer.from(html, "utf8"))) throw new Error(`${file} must be saved as UTF-8 to stamp its campaign.`);
+  const eol = html.includes("\r\n") ? "\r\n" : "\n";
+  const meta = `<meta name="board-campaign" content="${escapeHtml(name)}">`;
+  // Use a sibling temporary file so readers see either the old or the complete stamped source.
+  const temp = join(dirname(file), `${randomUUID()}.tmp`);
+  try {
+    writeFileSync(temp, html.slice(0, headStart) + eol + meta + eol + html.slice(headStart));
+    renameSync(temp, file);
+  } finally {
+    rmSync(temp, { force: true });
+  }
 }
 
 export function pieceVersion(boardVersion: string | undefined, current: number) {

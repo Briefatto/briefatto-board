@@ -40,7 +40,27 @@ const declaration = /^\s*(?:-\s+)?([\w-]+):[ \t]*(.*)$/;
 const property = /\b(font-?family|font-?size|(?:background-|border-|text-decoration-|outline-)?color|fill|stroke)\s*:\s*([^;}`\n]+?)(?=,\s*[\w-]+\s*:|[;}`]|$)/gi;
 const px = /^(\d+(?:\.\d+)?|\.\d+)px$/i;
 
-type StyleClaim = { rule: "colour" | "font-family" | "font-size"; value: string; line: number };
+export const generatedStart = "<!-- briefatto-board:generated begin -->";
+export const generatedEnd = "<!-- briefatto-board:generated end -->";
+
+/** Keep line numbers from the published guide when checking its authored material. */
+function authoredLines(markdown: string): string[] {
+  let generated = false;
+  return markdown.split(/\r?\n/).map((line) => {
+    if (line === generatedStart) generated = true;
+    if (line === generatedEnd) {
+      generated = false;
+      return "";
+    }
+    return generated ? "" : line;
+  });
+}
+
+function measuredBlock(markdown: string): string {
+  return markdown.split(generatedStart)[1]?.split(generatedEnd)[0] ?? "";
+}
+
+type StyleClaim = { rule: "colour" | "font-family" | "font-size"; value: string; line: number; role?: string };
 
 function* styleClaims(lines: string[]): Generator<StyleClaim> {
   let inColours = false;
@@ -75,6 +95,9 @@ function* styleClaims(lines: string[]): Generator<StyleClaim> {
         }
       }
     }
+    for (const [, value] of line.matchAll(/\bfont size(?:\s+(?:is|of|to))?\s+(\d+(?:\.\d+)?)\s*px\b/gi)) {
+      yield { rule: "font-size", value: value + "px", line: index + 1 };
+    }
     for (const value of values) {
       if (/^\{[^{}]+\}$/.test(value)) continue; // References name tokens, not new values.
       yield { rule: "colour", value, line: index + 1 };
@@ -83,12 +106,17 @@ function* styleClaims(lines: string[]): Generator<StyleClaim> {
 }
 
 export function designColourClaims(markdown: string): string[] {
-  return [...new Set([...styleClaims(markdown.split(/\r?\n/))]
-    .filter(({ rule }) => rule === "colour").map(({ value }) => value))];
+  const measured = [...measuredBlock(markdown).matchAll(/^\| [^\n]+ \| `colour: ([^`\n]+)` \|$/gm)].map(([, value]) => value);
+  const authored = [...styleClaims(authoredLines(markdown))].filter(({ rule }) => rule === "colour").map(({ value }) => value);
+  return [...new Set([...measured, ...authored])];
 }
 
 export function designTypographyFamilies(markdown: string): Set<string> {
   const fonts = new Set<string>();
+  for (const [, stack] of measuredBlock(markdown).matchAll(/^\| [^\n]+ \| `font-family: ([^`\n]+)` \|/gm)) {
+    const primary = families(stack)[0];
+    if (primary) fonts.add(primary.toLowerCase());
+  }
   const header = frontMatter.exec(markdown);
   if (header?.index !== 0) return fonts;
   const guide = parseDocument(header[1], { logLevel: "silent" });
@@ -111,15 +139,17 @@ export function computedSample(source: string, r: Rendered) {
   const stacks = [...new Set([...r.texts.map((t) => t.stack), ...(r.designStyles?.stacks ?? [])])];
   const sizes = [...new Set([...r.texts.map((t) => t.size), ...(r.designStyles?.sizes ?? [])])].sort((a, b) => a - b);
   const typography = new Map<string, {
+    role: string; colour: string;
     fontFamily: string; fontSize: string; fontWeight: number; fontStyle: string;
     textTransform: string; letterSpacingEm: number; lineHeight: number;
   }>();
   for (const t of r.texts) {
-    const style = { fontFamily: t.stack, fontSize: `${t.size}px`, fontWeight: t.weight, fontStyle: t.fontStyle ?? (t.italic ? "italic" : "normal"),
+    const style = { role: t.role ?? "other text", colour: t.color, fontFamily: t.stack, fontSize: `${t.size}px`, fontWeight: t.weight, fontStyle: t.fontStyle ?? (t.italic ? "italic" : "normal"),
       textTransform: t.transform, letterSpacingEm: t.letterSpacingEm, lineHeight: t.lineHeight };
     typography.set(JSON.stringify(style), style);
   }
-  return { source, width: r.width, height: r.height, colours, fontFamilies: [...new Set(stacks.flatMap(families))],
+  const paintedColours = [...new Map(r.colours.map(({ kind, value }) => [kind + "\0" + value, { kind, value }])).values()];
+  return { source, width: r.width, height: r.height, colours, paintedColours, fontFamilies: [...new Set(stacks.flatMap(families))],
     fontStacks: stacks, fontSizes: sizes.map((size) => `${size}px`), typography: [...typography.values()], radii: r.radii };
 }
 
@@ -162,27 +192,69 @@ async function styleFindings(lines: string[], samples: ComputedSample[], rendere
   const sizes = new Set([...byRule["font-size"].keys()].map(parseFloat));
   const findings: DesignFinding[] = [];
   const seen = new Set<string>();
-  function check(rule: StyleRule, value: string, present: boolean, line: number, normalized = value) {
-    const key = `${rule}\0${value.toLowerCase()}`;
+  function check({ rule, value, line, role }: StyleClaim, present: boolean, normalized = value,
+    expected = byRule[rule]) {
+    const general = `${rule}\0${value.toLowerCase()}`;
+    const key = role ? general + "\0" + role : general;
     if (present || seen.has(key)) return;
+    seen.add(general);
     seen.add(key);
-    findings.push({ rule, detail: `DESIGN.md:${line} has ${JSON.stringify(value)} with no match in the chosen samples. ${describeExpectedStyles(rule, normalized, byRule[rule])}` });
+    const context = role ? ` for ${JSON.stringify(role)}` : "";
+    findings.push({ rule, detail: `DESIGN.md:${line} contradicts the computed samples with ${JSON.stringify(value)}${context}. ${describeExpectedStyles(rule, normalized || value, expected)}` });
   }
-  const colourClaims = new Map<string, number>();
-  for (const { rule, value, line } of styleClaims(lines)) {
-    if (rule === "colour") {
-      if (!colourClaims.has(value)) colourClaims.set(value, line);
-    } else if (rule === "font-family") {
-      check(rule, value, fonts.has(value.toLowerCase()), line);
-    } else {
-      const matchPx = value.match(px);
-      check(rule, value, !!matchPx && sizes.has(Number(matchPx[1])), line);
+  const byRole = new Map<string, Record<"colour" | "font-size", Map<string, string[]>>>();
+  for (const { source, typography } of samples) {
+    for (const { role, fontSize, colour } of typography) {
+      const name = role.toLowerCase();
+      const values = byRole.get(name) ?? { colour: new Map(), "font-size": new Map() };
+      for (const [rule, value] of [["colour", colour], ["font-size", fontSize]] as const) {
+        const sources = values[rule].get(value) ?? [];
+        if (!sources.includes(source)) sources.push(source);
+        values[rule].set(value, sources);
+      }
+      byRole.set(name, values);
     }
   }
-  const claims = [...colourClaims.keys()];
-  const normalized = await renderer.normalizeColours(claims);
-  for (const [index, value] of claims.entries()) check("colour", value, byRule.colour.has(normalized[index]), colourClaims.get(value)!, normalized[index]);
+  const claims = [...roleClaims(lines, byRole.keys()), ...styleClaims(lines)];
+  const colourValues = [...new Set(claims.filter(({ rule }) => rule === "colour").map(({ value }) => value))];
+  const normalizedColours = new Map((await renderer.normalizeColours(colourValues)).map((value, index) => [colourValues[index], value]));
+  for (const claim of claims) {
+    const { rule, value, role } = claim;
+    if (rule === "colour") {
+      const normalized = normalizedColours.get(value) ?? "";
+      const expected = role ? byRole.get(role)!.colour : byRule.colour;
+      check(claim, expected.has(normalized), normalized, expected);
+    } else if (rule === "font-family") {
+      check(claim, fonts.has(value.toLowerCase()));
+    } else {
+      const matchPx = value.match(px);
+      const expected = role ? byRole.get(role)!["font-size"] : byRule["font-size"];
+      const allowed = role ? new Set([...expected.keys()].map(parseFloat)) : sizes;
+      check(claim, !!matchPx && allowed.has(Number(matchPx[1])), value, expected);
+    }
+  }
   return findings;
+}
+
+function* roleClaims(lines: string[], roles: Iterable<string>): Generator<StyleClaim> {
+  const names = [...roles].sort((a, b) => b.length - a.length).map((role) => role.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (!names.length) return;
+  const role = `(${names.join("|")})`;
+  const colour = `(${literalColour.source})`;
+  const afterRole = new RegExp(`\\b${role} font size (?:is |of )?(\\d+(?:\\.\\d+)?)\\s*px\\b`, "gi");
+  const beforeRole = new RegExp(`\\b(?:use|set) (?:an? )?(\\d+(?:\\.\\d+)?)\\s*px ${role}(?=[.!?,;]|\\s*$)`, "gi");
+  const colourRole = new RegExp(`\\buse \`?${colour}\`? for (?:the )?${role}(?: text)?(?=[.!?,;]|\\s*$)`, "gi");
+  for (const [index, line] of lines.entries()) {
+    for (const [, name, size] of line.matchAll(afterRole)) {
+      yield { rule: "font-size", value: size + "px", line: index + 1, role: name.toLowerCase() };
+    }
+    for (const [, size, name] of line.matchAll(beforeRole)) {
+      yield { rule: "font-size", value: size + "px", line: index + 1, role: name.toLowerCase() };
+    }
+    for (const [, value, name] of line.matchAll(colourRole)) {
+      yield { rule: "colour", value, line: index + 1, role: name.toLowerCase() };
+    }
+  }
 }
 
 function section(lines: string[], heading: string): string[] {
@@ -221,7 +293,9 @@ export function briefExpectations(board: Pick<Board, "brief" | "essentials">, re
   let offset = 0;
   for (const value of brief.split(/\n[ \t]*\n/)) {
     const index = brief.indexOf(value, offset);
-    if (value && !/^(?:#|[-*])/.test(value)) acceptedBrandFacts.push({ value, source: sourceAt(index) });
+    if (value && !/^(?:#|[-*] |\*\*)/.test(value) && !/^Make (?:our|the) brand and launch kit\.?$/i.test(value)) {
+      acceptedBrandFacts.push({ value, source: sourceAt(index) });
+    }
     offset = index + value.length;
   }
   const copyStart = brief.match(/^(?:\*\*(?:Campaign )?Copy\b[^\n]*\*\*|#{2,6}[ \t]+(?:Campaign )?Copy\b[^\n]*)$/im);
@@ -233,6 +307,28 @@ export function briefExpectations(board: Pick<Board, "brief" | "essentials">, re
     const role = match[1].trim();
     if (!constraintLabel.test(role)) campaignCopy.push({ role, copy: match[2].trimEnd(), source: sourceAt(copyOffset + match.index) });
   }
+  const sentences = new Intl.Segmenter("en", { granularity: "sentence" });
+  const quotedCopy = /"([^"\n]+)"|“([^”\n]+)”|`([^`\n]+)`/g;
+  for (const { value, source } of acceptedBrandFacts) {
+    // Sentence punctuation inside approved copy does not end the surrounding instruction.
+    const text = value.replace(quotedCopy, (quote) => quote.replace(/[.!?]/g, "·"));
+    const startLine = Number(source.slice("brief.md:".length));
+    for (const { segment, index } of sentences.segment(text)) {
+      const original = value.slice(index, index + segment.length);
+      const wording = original.trim();
+      const line = startLine + value.slice(0, index + original.length - original.trimStart().length).split("\n").length - 1;
+      const sentenceSource = `brief.md:${line}`;
+      if (/^(?:please (?:avoid|don't|do not|steer clear|use|work with|keep|include)|don't|do not|no|keep|put|use|include)\b/i.test(wording)) {
+        uniqueConstraints.push({ value: wording, source: sentenceSource });
+      }
+      const list = wording.match(/^(?:please use|the words (?:we['’]ve|we have) signed off are|the exact [^\n.!?]*? commands are)\s+(.+)/i)?.[1];
+      if (!list) continue;
+      for (const match of list.matchAll(quotedCopy)) {
+        const copy = match[1] ?? match[2] ?? match[3];
+        if (!campaignCopy.some((entry) => entry.copy === copy)) campaignCopy.push({ role: "Approved copy", copy, source: sentenceSource });
+      }
+    }
+  }
   const extra = [["Required copy", "required"], ["Body copy", "body"], ["Offer terms", "terms"]] as const;
   for (const [role, field] of extra) {
     const e = board.essentials;
@@ -242,16 +338,19 @@ export function briefExpectations(board: Pick<Board, "brief" | "essentials">, re
       campaignCopy.push({ role, copy, source });
     }
   }
-  return { brandFacts, acceptedBrandFacts, clientConstraints: uniqueConstraints, campaignCopy };
+  for (const [format, required] of Object.entries(board.essentials?.requiredByFormat ?? {})) {
+    for (const copy of new Set(required)) {
+      const index = brief.indexOf(copy);
+      if (index >= 0) campaignCopy.push({ role: `Required on ${format}`, copy, source: sourceAt(index) });
+    }
+  }
+  return { brandFacts, acceptedBrandFacts, clientConstraints: [...new Map(uniqueConstraints.map((quote) => [quote.value, quote])).values()], campaignCopy };
 }
 
 function briefFindings(lines: string[], expectations: ReturnType<typeof briefExpectations>): DesignFinding[] {
   const findings: DesignFinding[] = [];
   function compare(rule: string, heading: string, expected: SourceQuote[], accepted: SourceQuote[] = []) {
     const actual = quotes(section(lines, heading));
-    for (const { value, source } of new Map(expected.map((quote) => [quote.value, quote])).values()) {
-      if (!actual.includes(value)) findings.push({ rule, detail: `In DESIGN.md under "### ${heading}", quote ${JSON.stringify(value)} verbatim from ${source}.` });
-    }
     for (const value of new Set(actual)) {
       const sources = [...expected, ...accepted];
       if (sources.some((quote) => quote.value === value)) continue;
@@ -281,9 +380,6 @@ function briefFindings(lines: string[], expectations: ReturnType<typeof briefExp
   }
   const hasEntry = (entries: Array<Pick<CampaignRow, "role" | "copy">>, { role, copy }: Pick<CampaignRow, "role" | "copy">) =>
     entries.some((entry) => role === entry.role && copy === entry.copy);
-  for (const entry of campaignCopy) {
-    if (!hasEntry(actual, entry)) findings.push({ rule: "campaign-copy", detail: `In DESIGN.md under "### Campaign copy", use the verbatim ${JSON.stringify(entry.role)} row with ${JSON.stringify(entry.copy)} from ${entry.source}.` });
-  }
   for (const entry of actual) {
     if (hasEntry(campaignCopy, entry)) continue;
     const roles = campaignCopy.filter(({ role }) => role === entry.role);
@@ -337,13 +433,17 @@ function structureFindings(lines: string[], markdown: string): DesignFinding[] {
   return findings;
 }
 
-export async function validateDesign(markdown: string, project: string, inputs: {
+export interface GuideInputs {
   brief: ReturnType<typeof briefExpectations>; samples: ComputedSample[];
-}, renderer: Renderer, localAssets?: Set<string>): Promise<DesignFinding[]> {
-  const lines = markdown.split(/\r?\n/);
-  const [styles, references] = await Promise.all([styleFindings(lines, inputs.samples, renderer), validateDesignReferences(markdown, project, localAssets)]);
+}
+
+export async function validateDesign(markdown: string, project: string, inputs: GuideInputs,
+  renderer: Renderer, localAssets?: Set<string>): Promise<DesignFinding[]> {
+  const lines = authoredLines(markdown);
+  const prose = lines.join("\n");
+  const [styles, references] = await Promise.all([styleFindings(lines, inputs.samples, renderer), validateDesignReferences(prose, project, localAssets)]);
   return [
-    ...structureFindings(lines, markdown),
+    ...structureFindings(lines, prose),
     ...styles,
     ...briefFindings(lines, inputs.brief),
     ...references,

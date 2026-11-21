@@ -105,13 +105,14 @@ function captureQuality() {
     }
   }
 
-  // "Mostly" refers to a majority of the captured viewport. Keep the rule advisory.
   const halfViewport = innerWidth * innerHeight / 2;
   const contentArea = coveredArea(content);
   const chromeCoverage = coveredArea(chrome);
   return {
     mostlyChrome: chromeCoverage > halfViewport || (contentArea === 0 && chromeCoverage > 0),
-    mostlyEmpty: contentArea < halfViewport,
+    // Text bounds are tight. A legible headline or code example can occupy very
+    // little of an intentional layout, so warn only when visible content is negligible.
+    mostlyEmpty: contentArea < innerWidth * innerHeight * 0.02,
     undecodedImages,
   };
 }

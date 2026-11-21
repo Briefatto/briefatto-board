@@ -54,8 +54,8 @@ export function readFrozenDesign(boardDir: string, current: Board, board: Board)
   }
 }
 
-function sourceInputs({ name, direction, designHash, brief, essentials, briefAssets, constraints, samples }: Board) {
-  return { name, direction, designHash, brief, essentials, briefAssets, constraints,
+function sourceInputs({ name, direction, designHash, extractedDesignHash, brief, essentials, briefAssets, constraints, samples }: Board) {
+  return { name, direction, designHash, extractedDesignHash, brief, essentials, briefAssets, constraints,
     samples: samples.map(({ format, canvas, html, source, stylesHash }) => ({ format, canvas, html, source, stylesHash })),
   };
 }

@@ -4,7 +4,7 @@
 import { writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { designColourClaims, designTypographyFamilies } from "./design-validation.js";
-import { briefBrand, urlLike, type Essentials } from "./essentials.js";
+import { briefBrand, requiredCampaignCopy } from "./essentials.js";
 import type { Board } from "./freeze.js";
 import { findProjectFormats, formatById, formatOfFile, isFormatFile, type BoardFormat } from "./formats.js";
 import { briefFaults, checkImpeccable, formatNotes, impeccable, renderFaults, type DismissedFloorFault, type FloorFault, type SourceFloor } from "./floor.js";
@@ -25,6 +25,10 @@ interface CheckCoverage {
   skipped: Array<{ check: string; reason: string }>;
 }
 
+const campaignChecks = {
+  copy: "campaign copy", body: "campaign body reading size", images: "campaign images",
+};
+
 interface FloorCheckResult {
   file: string;
   format: string;
@@ -40,6 +44,7 @@ export interface DefaultCheckResult extends FloorCheckResult {
   /** The brief's requested strings, body size and images (essentials.ts). */
   brief: FloorFault[];
   briefApplied: boolean;
+  briefScope: string;
   outsideValues: OutsideValue[];
 }
 
@@ -183,11 +188,11 @@ function checkCoverage(fmt: BoardFormat, r: Rendered, detectorFailure: FloorFaul
   record("story safe zones", fmt.kind === "story" && fmt.safeZones ? undefined : "format declares no story safe zones");
   record("brand name when visible", floorOnly);
   const campaignSkipped = floorOnly ?? (campaign ? undefined : "piece has no board-campaign meta and --brief was not supplied");
-  const e: Essentials | undefined = board?.essentials;
-  const required = [...(e?.required ?? []), ...(e?.termsExempt?.includes(fmt.id) ? [] : e?.terms ?? [])];
-  record("campaign copy", campaignSkipped ?? (!required.some((copy) => fmt.id !== "hero" || !urlLike(copy)) ? "brief defines no required copy for this format" : undefined));
-  record("campaign body reading size", campaignSkipped ?? (!(e?.body.length && e.bodyFloor === "reading") ? "brief defines no body copy with a reading-size floor" : undefined));
-  record("campaign images", campaignSkipped ?? (!(e?.assetUse === "required" && e.assets.length) ? "brief defines no required images" : undefined));
+  const e = board?.essentials;
+  const { required, terms } = requiredCampaignCopy(e, fmt.id);
+  record(campaignChecks.copy, campaignSkipped ?? (!required.length && !terms.length ? "brief defines no required copy for this format" : undefined));
+  record(campaignChecks.body, campaignSkipped ?? (!(e?.body.length && e.bodyFloor === "reading") ? "brief defines no body copy with a reading-size floor" : undefined));
+  record(campaignChecks.images, campaignSkipped ?? (!(e?.assetUse === "required" && e.assets.length) ? "brief defines no required images" : undefined));
   record("frozen value drift", floorOnly);
   record("frozen consistency and composition", floorOnly ?? (consistency ? undefined : "--consistency was not supplied"));
   return checks;
@@ -195,7 +200,7 @@ function checkCoverage(fmt: BoardFormat, r: Rendered, detectorFailure: FloorFaul
 
 export async function check(board: Board | null, files: string[], opts: {
   renderer?: Renderer; out?: string; consistency?: boolean; formats?: BoardFormat[]; previous?: Board[]; brief?: boolean;
-  designs?: ReadonlyMap<number, string>;
+  designs?: ReadonlyMap<number, string>; requireBriefCoverage?: boolean;
 } = {}) {
   const renderer = opts.renderer ?? new Renderer();
   const results: Array<DefaultCheckResult | CheckResult | (FloorCheckResult & { composition: Composition })> = [];
@@ -204,6 +209,8 @@ export async function check(board: Board | null, files: string[], opts: {
     const currentDesign = board ? opts.designs?.get(board.version) : undefined;
     const brandFonts = currentDesign === undefined ? undefined : designTypographyFamilies(currentDesign);
     for (const f of files) {
+      const campaign = board ? readPiece(f).campaign ?? (opts.brief ? board.name : undefined) : undefined;
+      const briefApplied = campaign !== undefined;
       const formats = opts.formats ?? findProjectFormats(f);
       const kit = opts.consistency || !board || isFormatFile(f, formats) ? formatOfFile(f, formats) : undefined;
       const findings = impeccable(f);
@@ -218,7 +225,6 @@ export async function check(board: Board | null, files: string[], opts: {
       const designNotes = [...source.designNotes, ...source.floor.filter(isDesignNote), ...formatNotes(r, fmt)];
       const floor = [...source.floor.filter((fault) => !isDesignNote(fault)), ...renderFaults(r, fmt)];
       const format = kit?.id ?? basename(f);
-      const briefApplied = !!board && (!!opts.brief || Boolean(readPiece(f).campaign));
       const checks = checkCoverage(fmt, r, findings.find((fault) => fault.rule === "impeccable-failed"), board, briefApplied, !!opts.consistency);
       const base = { file: f, format, png: r.png, floor, dismissed: source.dismissed, checks, designNotes };
       if (!board) {
@@ -226,8 +232,13 @@ export async function check(board: Board | null, files: string[], opts: {
         continue;
       }
       const brief = briefFaults(r, fmt, briefApplied ? board.essentials : undefined, briefBrand(board.brief, board.name));
+      if (opts.requireBriefCoverage && !Object.values(campaignChecks).some((name) => checks.ran.includes(name))) {
+        brief.push({ rule: "campaign-requirements-missing", source: "brief",
+          detail: `No campaign requirements could be checked for ${format}. Record the brief's requirements in essentials.json and freeze again.` });
+      }
       const result = {
         ...base, pass: floor.length === 0 && brief.length === 0, brief, briefApplied,
+        briefScope: campaign === undefined ? "not a campaign piece" : `campaign: ${campaign}, checked against brief.md`,
         outsideValues: boardValueNotes(board, r, opts.previous ?? [], colours),
       };
       results.push(opts.consistency ? checkRendered(board, r, result, colours.get(board.version)) : result);

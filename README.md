@@ -38,7 +38,7 @@ npx briefatto-board adopt .
 npx briefatto-board freeze .
 ```
 
-**Starting a brand → references → directions → pick → freeze.** Put the brief in `brief.md` and ask your agent to follow the skill. It shows you a sheet of references to point at, draws three directions from your picks, revises the one you choose and writes `DESIGN.md` and freezes it after your yes. Use the chosen direction ID in place of `lead`.
+**Starting a brand → references → directions → pick → freeze.** Put the brief in `brief.md` and ask your agent to follow the skill. It shows you a reference sheet, draws three directions from your picks, revises the one you choose and writes the design guidance after your yes. Use the chosen direction ID in place of `lead`.
 
 ```sh
 npx briefatto-board refs .
@@ -57,7 +57,7 @@ Node.js 24 or later. The first render prints the Playwright command to install C
   </picture>
 </p>
 
-- **Versioned brand state.** `board freeze` validates `DESIGN.md` against a fresh render: every colour, font and size it names must appear in the chosen samples. It stamps a version and archives the guide, and adds a standing instruction to `AGENTS.md` and `CLAUDE.md` so every session reads `DESIGN.md` first.
+- **Versioned brand state.** `board freeze` records source wording and exact styles from a fresh render in a generated DESIGN.md block. It validates the authored guidance against those values, stamps and archives the guide, and tells future sessions to read it first.
 - **A quality floor for every piece.** `board check` renders each piece and fails it for text that is clipped, off the canvas, over other text, too small where it is seen, in a font that never loaded, or below WCAG contrast, and for the anti-patterns found by the [Impeccable](https://github.com/pbakaus/impeccable) detector.
 - **Truthful status.** Each piece declares the version it was made under. After a brand change, `board status` lists which pieces are current and which are stale.
 
@@ -113,8 +113,9 @@ npx briefatto-board status
 | `board adopt .` | Captures an existing site's pages and computed styles |
 | `board refs .` | Builds a reference sheet from entries in `refs/manifest.json` |
 | `board directions .` | Renders each direction's samples as a sheet |
-| `board freeze . [direction]` | Validates `DESIGN.md` and stamps the next version |
+| `board freeze . [direction]` | Generates source and sample values, validates the prose, and stamps the next guide version |
 | `board check . <piece.html>` | Renders a piece and checks it against the quality floor |
+| `board kit .` | Checks launch deliverables as a campaign and makes a receipt and kit sheet |
 | `board status` | Lists pieces as current, stale or unrecorded |
 | `board log` · `board diff v1 v2` | Shows version history and what changed |
 

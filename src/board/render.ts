@@ -11,6 +11,7 @@ export interface Box { x: number; y: number; w: number; h: number }
 
 export interface TextRun {
   text: string;
+  role?: string;
   family: string;
   /** The whole font-family list as written. */
   stack: string;
@@ -307,7 +308,12 @@ function readPage(canvas: { width: number; height: number; collectDesignStyles: 
     const text = textParts.join(" ");
     const ls = cs.letterSpacing === "normal" ? 0 : parseFloat(cs.letterSpacing) / size;
     const lh = Number.isFinite(lineHeight) ? lineHeight / size : 1.2;
-    out.texts.push({ text, family, stack, loaded: fontLoaded(primaryFamily, cs.fontWeight, cs.fontStyle, text), size, weight: parseInt(cs.fontWeight, 10), letterSpacingEm: Math.round(ls * 1000) / 1000, lineHeight: Math.round(lh * 100) / 100, transform: cs.textTransform, italic: cs.fontStyle !== "normal", fontStyle: cs.fontStyle, align: cs.textAlign, color: cs.color, box, clipped });
+    const semantic = el.closest("h1,h2,h3,h4,h5,h6,button,[role=button],a,code,pre,p,label,figcaption");
+    const tag = semantic?.tagName.toLowerCase();
+    const role = el.closest("[data-board-role]")?.getAttribute("data-board-role")?.trim()
+      || (tag === "p" ? "body" : tag === "h1" ? "headline" : tag === "a" ? "link" : tag === "pre" ? "code"
+        : semantic?.getAttribute("role") === "button" ? "button" : tag) || "other text";
+    out.texts.push({ text, role, family, stack, loaded: fontLoaded(primaryFamily, cs.fontWeight, cs.fontStyle, text), size, weight: parseInt(cs.fontWeight, 10), letterSpacingEm: Math.round(ls * 1000) / 1000, lineHeight: Math.round(lh * 100) / 100, transform: cs.textTransform, italic: cs.fontStyle !== "normal", fontStyle: cs.fontStyle, align: cs.textAlign, color: cs.color, box, clipped });
     out.colours.push({ value: cs.color, kind: "text", area: box.w * box.h });
   };
   for (const el of els) {
