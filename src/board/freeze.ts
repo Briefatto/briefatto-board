@@ -30,7 +30,7 @@ export interface Board {
   extractedDesignHash?: string;
   note: string;
   /** Approval recorded for the initial freeze of a new direction. */
-  initialApproval?: { method: "client" | "self" };
+  initialApproval?: { method: "client" | "self" } | { method: "agent"; reason: string };
   name: string;
   direction: { id: string; title: string; text: string };
   frozenAt: string;
@@ -226,14 +226,22 @@ function projectBrief(project: string): string | undefined {
   return existsSync(path) ? readFileSync(path, "utf8") : undefined;
 }
 
-export function initialApproval(project: string, directionDir: string | undefined, selfApproved = false): Board["initialApproval"] {
+export function validateApprovalOptions(selfApproved = false, agentPicked?: string): void {
+  if (agentPicked === undefined) return;
+  if (!agentPicked.trim()) throw new Error("--agent-picked requires a non-empty reason.");
+  if (selfApproved) throw new Error("Use either --self-approved or --agent-picked, not both.");
+}
+
+export function initialApproval(project: string, directionDir: string | undefined, selfApproved = false, agentPicked?: string): Board["initialApproval"] {
+  validateApprovalOptions(selfApproved, agentPicked);
   if (!directionDir) return;
+  if (agentPicked !== undefined) return { method: "agent", reason: agentPicked };
   if (selfApproved) return { method: "self" };
   if (!existsSync(join(project, "brief.md"))) return;
   const direction = basename(directionDir);
   const quote = readApproval(join(project, "refs", "notes.md"), direction);
   if (!quote) {
-    throw new Error(`Record the client's verbatim approval in a fenced approval ${direction} block in refs/notes.md, then run board freeze . ${direction}.`);
+    throw new Error(`Record the client's verbatim approval in a fenced approval ${direction} block in refs/notes.md, or use --self-approved for your own project, or --agent-picked "<reason>" when the person delegated the choice. Then run board freeze . ${direction} with the chosen option.`);
   }
   return { method: "client" };
 }
@@ -388,13 +396,14 @@ export async function renderBoard(opts: BoardSources & {
 
 /** Freeze a new current version while retaining the previous board and its sample files. */
 export function freeze(opts: BoardSources & {
-  boardDir: string; name: string; note?: string; renderer?: Renderer; extract?: boolean; selfApproved?: boolean;
+  boardDir: string; name: string; note?: string; renderer?: Renderer; extract?: boolean; selfApproved?: boolean; agentPicked?: string;
   onValidated?: () => void; prepareCurrent?: (guide: string, source?: Buffer) => () => void;
 }) {
+  validateApprovalOptions(opts.selfApproved, opts.agentPicked);
   const project = dirname(opts.boardDir);
   let source: Buffer | undefined;
   return publishBoard(opts.boardDir, (stage, version, previous) => {
-    const approval = previous ? undefined : initialApproval(project, opts.directionDir, opts.selfApproved);
+    const approval = previous ? undefined : initialApproval(project, opts.directionDir, opts.selfApproved, opts.agentPicked);
     let authoredDesign: string | undefined;
     if (!opts.extract) {
       const designPath = join(project, "DESIGN.md");

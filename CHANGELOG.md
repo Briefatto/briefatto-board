@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6
+
+- Stop the brief path for the person once, at the three direction sheets: pick one, ask for changes, or hand the choice to the agent. The pick is the production approval. Missing facts are asked for in one message at the start, or named as missing at handoff.
+- Add `board freeze . <id> --agent-picked "<reason>"` for a first freeze the person delegated. `board log` shows the reason, the handoff shows the other two directions, and `board freeze . <other-id> --note "Switch to direction <other-id>"` switches.
+- Use and record every client reference. The agent's own reference capture is research and is never shown for a pick.
+
 ## 0.1.5
 
 - Add design principles and an architecture guide, name every supported agent (Claude Code and the agents that read AGENTS.md), link the blind test and the DESIGN.md gallery, and add the Claude Code plugin install.

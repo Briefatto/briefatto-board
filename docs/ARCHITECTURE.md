@@ -8,7 +8,7 @@ A design layer for agents has two jobs that pull in opposite directions. It has 
 
 ## The parts
 
-**The skill.** `SKILL.md` is the protocol the agent follows. It tells the agent to read a frozen DESIGN.md before any visual work, lays out both entries step by step, and marks the places where the agent stops for a person, such as showing the reference sheet before drawing a single direction.
+**The skill.** `SKILL.md` is the protocol the agent follows. It tells the agent to read a frozen DESIGN.md before any visual work, lays out both entries step by step, and marks the one place on the brief path where the agent stops for a person: the three direction sheets, where the person picks one, asks for changes or hands the choice to the agent.
 
 **The CLI.** `npx briefatto-board` runs `install`, `adopt`, `refs`, `directions`, `freeze`, `check`, `kit`, `status`, `log` and `diff`. Every command that looks at a design renders it in headless Chromium through Playwright and reads computed styles, text geometry, font loading and contrast from the live page, on your machine.
 
@@ -29,13 +29,13 @@ A design layer for agents has two jobs that pull in opposite directions. It has 
 ```
   EXISTING SITE                              NEW BRAND
   board adopt .                    [code]    brief.md, essentials.json          [person + model]
-    pages at desktop and mobile              board refs . --capture <url> <png> [code]
-    -> .briefatto/adoption/                  refs/manifest.json -> refs/sheet.png
-       screenshots + evidence.json           client says what to work from      [person]
+    pages at desktop and mobile              missing facts asked in one message [person]
+    -> .briefatto/adoption/                  client references; optional
+       screenshots + evidence.json           board refs . --capture <url> <png> [code]
   agent reads captures and styles  [model]   agent draws directions/<id>/       [model]
   agent writes DESIGN.md prose     [model]   board directions . -> sheet.png    [code]
-                                             client picks; approval and
-                                             constraints in refs/notes.md       [person]
+                                             person picks, or hands the pick
+                                             to the agent; refs/notes.md        [person]
                                              agent writes DESIGN.md prose       [model]
                  \                                   /
                   board freeze . [<id>]                                         [code]
@@ -54,7 +54,7 @@ A design layer for agents has two jobs that pull in opposite directions. It has 
 
 **Adopting a site.** `board adopt .` finds the top-level HTML pages, a conventional build with an index page, files passed with `--page`, or the URLs of a running site, and captures each at desktop and mobile sizes. It writes screenshots and an `evidence.json` of computed styles, visible copy and candidate style sources (stylesheets, Tailwind configuration, theme and logo files) to `.briefatto/adoption/`. The agent reads them alongside the source and writes DESIGN.md from the site that exists. `board freeze .` then renders the same pages fresh and freezes v1. When the site needs tidying first, `board adopt . --check` runs the floor before anything else.
 
-**Starting from a brief.** The agent saves the client's words to `brief.md` and the literal requirements to `essentials.json`. It captures live references with `board refs . --capture`, which hides cookie prompts and flags captures that did not settle or lost their images, and `board refs .` composes the sheet the client reacts to. The agent declares the audience's canvases in `formats.json` and draws three distinct directions as HTML samples, each with the brief's real copy, a designed wordmark and a recurring device marked `data-device`. `board directions .` renders each as a sheet, and the client points at one. Their words go into `refs/notes.md`, with musts and must-nots in fenced `constraint` blocks and the approval in a fenced `approval <id>` block. A first freeze requires that approval, or `--self-approved` for a developer acting as their own client. The agent writes DESIGN.md from the chosen samples, and `board freeze . <id>` stamps v1.
+**Starting from a brief.** The agent saves the client's words to `brief.md` and the literal requirements to `essentials.json`, and asks for every missing fact in one message. With no one to answer, it names the fact as missing at handoff and never invents it. References are the client's own material, recorded in `refs/manifest.json`, and the agent's private research, captured with `board refs . --capture`, which hides cookie prompts and flags captures that did not settle or lost their images. The agent declares the audience's canvases in `formats.json` and draws three distinct directions as HTML samples, each with the brief's real copy, a designed wordmark and a recurring device marked `data-device`. `board directions .` renders each as a sheet, and the person points at one, asks for changes, or hands the choice to the agent. The pick is the production approval. Their words go into `refs/notes.md`, with musts and must-nots in fenced `constraint` blocks and the approval in a fenced `approval <id>` block. A first freeze requires that approval, `--agent-picked "<reason>"` when the person handed over the choice, or `--self-approved` for a developer acting as their own client. The agent writes DESIGN.md from the chosen samples, `board freeze . <id>` stamps v1, and the agent makes the kit. After an agent pick, the handoff shows the other two directions beside the kit, and a switch is one more version: `board freeze . <other-id> --note "Switch to direction <other-id>"`.
 
 **Making pieces.** Each piece is standalone HTML under `outputs/` that declares its version, and `board check` runs the floor on any of them. `board kit .` checks the format-named pieces together with their campaign requirements and final exports, and writes `kit-check.json`, with the SHA-256 of every checked file, and a kit sheet. A brand change starts with the client's exact words, then an updated DESIGN.md and `board freeze . <id> --note "..."`. Earlier constraints carry forward, status names every piece to revisit, and the agent redraws them.
 
@@ -62,8 +62,8 @@ A design layer for agents has two jobs that pull in opposite directions. It has 
 
 | Work | Runs in | Why there |
 | :--- | :--- | :--- |
-| Reading the brief, choosing references, drawing directions | The agent's model | Taste, which improves with every model |
-| Reacting, picking, approving | The person | The pick is where intent becomes a fact |
+| Reading the brief and references, drawing directions | The agent's model | Taste, which improves with every model |
+| Supplying facts, picking a direction or handing the pick over | The person | The pick is where intent becomes a fact |
 | Writing DESIGN.md prose | The agent's model | Composition is carried in words the next model reads |
 | Capturing, rendering, measuring | Code | A measured value is exact |
 | Generated block and validation | Code | The guide never contradicts its samples |

@@ -76,7 +76,7 @@ test("the first freeze needs the marked verbatim production approval for the sel
   const assertBlocked = (...flags: string[]) => {
     assert.deepEqual(run(project.path, "freeze", ".", "fellow", ...flags), {
       status: 1, stdout: "",
-      stderr: "Record the client's verbatim approval in a fenced approval fellow block in refs/notes.md, then run board freeze . fellow.",
+      stderr: "Record the client's verbatim approval in a fenced approval fellow block in refs/notes.md, or use --self-approved for your own project, or --agent-picked \"<reason>\" when the person delegated the choice. Then run board freeze . fellow with the chosen option.",
     });
     assert.equal(existsSync(boardDir), false);
   };
@@ -108,4 +108,41 @@ test("a solo developer can explicitly self-approve v1 and the log keeps the deci
   assert.equal(existsSync(join(project.path, "refs")), false);
   assert.deepEqual(readBoard(join(project.path, "board")).initialApproval, { method: "self" });
   assert.match(run(project.path, "log").stdout, /^v1 .*"First launch"  \(self-approved\)  \(current\)$/);
+});
+
+test("a delegated first freeze records the agent's reason, refuses bad flag use, and a later switch freezes the other direction", () => {
+  using project = mkdtempDisposableSync(join(tmpdir(), "board-agent-picked-"));
+  greenfield(project.path);
+  const other = join(project.path, "directions", "plain");
+  mkdirSync(other, { recursive: true });
+  writeFileSync(join(other, "hero.html"), "<!doctype html><title>Launch</title><h1>Client launch guide.</h1>");
+  const boardDir = join(project.path, "board");
+  const blocked = (message: string, ...args: string[]) => {
+    assert.deepEqual(run(project.path, "freeze", ".", "fellow", ...args), { status: 1, stdout: "", stderr: message });
+    assert.equal(existsSync(boardDir), false);
+  };
+  blocked("--agent-picked requires a non-empty reason.", "--agent-picked", "  ");
+  blocked("Missing value for --agent-picked.", "--agent-picked");
+  blocked("Use either --self-approved or --agent-picked, not both.", "--self-approved", "--agent-picked", "closest to the brand");
+  blocked("Use either --self-approved or --agent-picked, not both.", "--check", "--self-approved", "--agent-picked", "closest to the brand");
+
+  const dry = run(project.path, "freeze", ".", "--agent-picked", "closest to the brand", "--dry-run", "fellow");
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.equal(existsSync(boardDir), false);
+
+  const reason = "closest to the brand";
+  const frozen = run(project.path, "freeze", "--agent-picked", reason, ".", "fellow", "--note", "First launch");
+  assert.equal(frozen.status, 0, frozen.stderr);
+  assert.deepEqual(readBoard(boardDir).initialApproval, { method: "agent", reason });
+  assert.equal(readBoard(boardDir).direction.id, "fellow");
+  assert.match(run(project.path, "log").stdout, /^v1 .*"First launch"  \(agent-picked: closest to the brand\)  \(current\)$/);
+
+  const switched = run(project.path, "freeze", ".", "plain", "--note", "Switch to direction plain");
+  assert.equal(switched.status, 0, switched.stderr);
+  const board = readBoard(boardDir);
+  assert.equal(board.version, 2);
+  assert.equal(board.direction.id, "plain");
+  const log = run(project.path, "log").stdout.split("\n");
+  assert.match(log[0], /^v1 .*\(agent-picked: closest to the brand\)$/);
+  assert.match(log[1], /^v2 .*"Switch to direction plain"  \(current\)$/);
 });

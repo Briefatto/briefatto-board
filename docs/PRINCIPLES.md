@@ -19,13 +19,13 @@ On its way to the screen, intent passes through four steps and loses something a
 
 Then the next session starts from the brief and draws something else. That loss, continuity, compounds with every session, and it is why we call today's AI design a slot machine. Each pull can pay out a great page, nothing ties one pull to the next, and anyone who wants a brand is left pulling again and choosing by hand. A better prompt only reaches the loss of expression, and a better model still starts every session from zero. Making agents better designers leaves continuity where it was.
 
-Designers never closed this gap with better words. They pinned up references, showed options as pictures, and waited for the client to put a finger on one and say "this one". Briefatto Board makes that practice the protocol an agent runs.
+Designers never closed this gap with better words. They worked from the client's material, showed options as pictures in the client's own brand, and waited for the client to put a finger on one and say "this one". Briefatto Board makes that practice the protocol an agent runs, and a person who would rather not choose hands the pick to the agent.
 
 | Designer's practice | Board step | Loss it closes |
 | :--- | :--- | :--- |
-| Collect references | `board refs` builds the sheet the client reacts to | Expression |
-| Show options as pictures | `board directions` renders three directions on the real canvases | Understanding |
-| Point at one | The client's exact approval is recorded with the pick | Understanding |
+| Collect references | The client's references are recorded, and `board refs` captures the agent's own research | Expression |
+| Show options as pictures | `board directions` renders three directions in the client's brand on the real canvases | Understanding |
+| Point at one | The pick is the production approval, recorded in the client's exact words, or the agent picks and says why | Understanding |
 | Write the brand guide | `board freeze` stamps a versioned DESIGN.md | Continuity |
 | Check the work | `board check` renders every piece against the floor | Execution |
 | Track the brand | `board status` and `board diff` | Continuity |
@@ -36,7 +36,7 @@ Aesthetic judgement lives in the model inside your coding agent, and that model 
 
 We ship no taste rubric, and the reason is mechanical. A fixed rubric caps a stronger model at the taste of whoever wrote the rules. It also becomes the target, because an agent optimises what it is scored on. That is Goodhart's law, and its end state is work that passes every score after losing what made it good.
 
-So the board gives the model what a great designer gives a strong colleague: the brief, the references, the client's pick and the brand guide. Then the model designs, and the people who use the picture judge it whole.
+So the board gives the model what a great designer gives a strong colleague: the brief, the client's references, the chosen direction and the brand guide. Then the model designs, and the people who use the picture judge it whole.
 
 ## The floor belongs to code
 

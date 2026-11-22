@@ -8,7 +8,7 @@ import { check } from "./check.js";
 import { checkDeliverables, loadDeliverables, type Deliverable } from "./deliverables.js";
 import { diffBoards } from "./diff.js";
 import { findProjectFormats, FORMATS, formatFiles, formatOfFile, isFormatFile, loadProjectFormats } from "./formats.js";
-import { freeze, initialApproval, previewFreeze, renderBoard, type Board } from "./freeze.js";
+import { freeze, initialApproval, previewFreeze, renderBoard, validateApprovalOptions, type Board } from "./freeze.js";
 import { boardValueKey, declareCampaign, hasOutsideValues, isPieceFile, outputFiles, pieceStatusText, pieceVersion, pieceVersionText, readPiece, recordValueObservation } from "./pieces.js";
 import { captureReferences, writeReferenceSheet } from "./refs.js";
 import { Renderer } from "./render.js";
@@ -40,7 +40,7 @@ const subcommands = new Map([
   ["render", "render <file.html...>"],
   ["refs", "refs [project] [--capture <url> <image.png> ...]"],
   ["directions", "directions [project] [<id>] [--check]"],
-  ["freeze", "freeze [project] [<direction>] [--name <name>] [--note <note>] [--check] [--force] [--extract] [--dry-run] [--self-approved]"],
+  ["freeze", "freeze [project] [<direction>] [--name <name>] [--note <note>] [--check] [--force] [--extract] [--dry-run] [--self-approved | --agent-picked <reason>]"],
   ["log", "log [project]"],
   ["diff", "diff <a> <b> [project]"],
   ["status", "status [project]"],
@@ -250,6 +250,12 @@ async function main() {
     const note = flag("note");
     const boardName = flag("name");
     const selfApproved = args.includes("--self-approved");
+    const agentFlag = args.indexOf("--agent-picked");
+    if (agentFlag >= 0 && (args[agentFlag + 1] === undefined || args[agentFlag + 1].startsWith("--"))) {
+      throw new Error("Missing value for --agent-picked.");
+    }
+    const agentPicked = flag("agent-picked");
+    validateApprovalOptions(selfApproved, agentPicked);
     const scope = args.filter((arg) => !["--check", "--force", "--extract", "--dry-run", "--self-approved"].includes(arg));
     if (scope.length > 2 || scope.some((arg) => arg.startsWith("--"))) throw new Error(`Usage: board ${subcommands.get("freeze")}`);
     const project = resolve(scope[0] ?? ".");
@@ -273,7 +279,7 @@ async function main() {
       return;
     }
     if (args.includes("--check")) {
-      if (!existsSync(join(boardDir, "board.json"))) initialApproval(project, dir, selfApproved);
+      if (!existsSync(join(boardDir, "board.json"))) initialApproval(project, dir, selfApproved, agentPicked);
       const rr = new Renderer();
       try {
         if (dir) {
@@ -297,7 +303,7 @@ async function main() {
       } finally { await rr.close(); }
     }
     const { board: b, changed } = await freeze({
-      ...sources, boardDir, name, note, selfApproved, extract: args.includes("--extract"),
+      ...sources, boardDir, name, note, selfApproved, agentPicked, extract: args.includes("--extract"),
       onValidated: () => console.log("PASS DESIGN.md: generated source and sample values, validated prose and file references."),
       prepareCurrent: (guide, source) => prepareStandingInstructions(project, guide, source),
     });
@@ -317,7 +323,7 @@ async function main() {
     const current = readBoard(boardDir);
     for (let version = 1; version <= current.version; version++) {
       const b = readBoardVersion(boardDir, current, version);
-      const approval = b.initialApproval ? `  (${b.initialApproval.method === "self" ? "self-approved" : "client-approved"})` : "";
+      const approval = b.initialApproval ? `  (${b.initialApproval.method === "agent" ? `agent-picked: ${b.initialApproval.reason}` : b.initialApproval.method === "self" ? "self-approved" : "client-approved"})` : "";
       console.log(`${versionLabel(version)}  ${b.frozenAt}  ${b.note ? JSON.stringify(b.note) : "(no note)"}${approval}${version === current.version ? "  (current)" : ""}`);
     }
     return;

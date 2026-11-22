@@ -58,15 +58,14 @@ npx briefatto-board adopt .
 npx briefatto-board freeze .
 ```
 
-**Starting a brand → references → directions → pick → freeze.** Put the brief in `brief.md` and ask your agent to follow the skill. It shows you a reference sheet, draws three directions from your picks, revises the one you choose and writes the design guidance after your yes. Use the chosen direction ID in place of `lead`.
+**Starting a brand → directions → pick → kit.** Put the brief in `brief.md` and ask your agent to follow the skill. It asks once for any fact the brief leaves out, draws three directions in your brand and stops for one answer: pick one, ask for changes, or let the agent choose. Then it writes the design guide, freezes it and makes the kit. Use the chosen direction ID in place of `lead`.
 
 ```sh
-npx briefatto-board refs .
 npx briefatto-board directions .
 npx briefatto-board freeze . lead
 ```
 
-Before v1, put the client's exact production approval in a fenced `approval lead` block in `refs/notes.md`. Replace `lead` with the chosen direction ID. If you are working alone as your own client, run `board freeze . lead --self-approved`. `board log` records the decision.
+Your pick is the production approval: the agent records your exact words in a fenced `approval lead` block in `refs/notes.md`. When you let the agent choose, it freezes with `board freeze . lead --agent-picked "<reason>"` and hands over the kit with the other two directions beside it; name another one and it switches. If you are working alone as your own client, run `board freeze . lead --self-approved`. `board log` records the decision.
 
 Node.js 24 or later. The first render prints the Playwright command to install Chromium if it is missing.
 
@@ -99,7 +98,7 @@ A design system's first reader is now a coding agent. We built Briefatto Board f
 - **Taste belongs to the model.** Your agent's model makes every aesthetic call and improves every year. We ship no taste rubric: one would cap the model and become its target.
 - **The floor belongs to code.** `board check` fails what is provably wrong: text that is clipped, off the canvas, overlapping or too small where it is seen, fonts that never loaded, contrast below WCAG, Impeccable's anti-patterns. Exported PNG and PDF files match their source.
 - **One brand for every agent.** Claude Code, Codex, Cursor, Copilot and Gemini CLI read the same frozen DESIGN.md, months and sessions apart, and after a brand change `board status` names every stale piece.
-- **Pictures carry intent.** Designers never closed the intent gap with words. Agents get references, directions drawn as pictures and a client's pick.
+- **Pictures carry intent.** Designers never closed the intent gap with words. The agent draws three directions in your own brand, and you point at one or hand it the choice.
 - **The repository is the brand system.** DESIGN.md lives in Git, so review, pull requests, permissions and history work on it. `board freeze`, `board diff` and `board status` add brand versions.
 
 Read the full [design principles](docs/PRINCIPLES.md) and [how it works](docs/ARCHITECTURE.md).
@@ -162,7 +161,7 @@ npx briefatto-board status
 | :--- | :--- |
 | `board install` | Adds Briefatto Board and its skill to a project |
 | `board adopt .` | Captures an existing site's pages and computed styles |
-| `board refs .` | Builds a reference sheet from entries in `refs/manifest.json` |
+| `board refs .` | Captures references and builds a sheet from entries in `refs/manifest.json` |
 | `board directions .` | Renders each direction's samples as a sheet |
 | `board freeze . [direction]` | Generates source and sample values, validates the prose, and stamps the next guide version |
 | `board check . [<piece.html>]` | Checks the visual floor on supplied HTML and verifies final PNG and PDF files |

@@ -1,6 +1,6 @@
 {
   "name": "briefatto-board",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "description": "Versioned DESIGN.md for coding agents: one design guide read before visual work, plus checks for clipped text, fonts, contrast and AI-design tells.",
   "author": { "name": "Briefatto" },
   "homepage": "https://briefatto.com",
