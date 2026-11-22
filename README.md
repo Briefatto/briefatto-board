@@ -5,13 +5,13 @@ One versioned design guide (DESIGN.md) that Claude Code, Codex, Cursor, GitHub C
 npx briefatto-board install
 ```
 
-You can also install the skill through skills.sh.
+Also on skills.sh:
 
 ```sh
 npx skills add Briefatto/briefatto-board
 ```
 
-Or as a Claude Code plugin.
+And as a Claude Code plugin:
 
 ```sh
 claude plugin marketplace add Briefatto/briefatto-board
@@ -20,7 +20,7 @@ claude plugin install briefatto-board@briefatto
 
 **Blind-tested.** On a real open-source site, all four blind judges ranked Briefatto Board's work first, ahead of Impeccable, Taste Skill and Hallmark. [See every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/). On a second site, Pyxel, all four blind judges again ranked it first, this time ahead of Anthropic's frontend-design skill: [blind test 2](https://briefatto.com/guides/frontend-design-skill-vs-briefatto-board-blind-test/). On a third site, PocketBase, every blind judge ranked it above UI UX Pro Max: [blind test 3](https://briefatto.com/guides/ui-ux-pro-max-vs-briefatto-board-blind-test/). Raw data: [Hugging Face](https://huggingface.co/datasets/briefatto-lab/design-kit-evals) · [DOI 10.5281/zenodo.24436111](https://doi.org/10.5281/zenodo.24436111).
 
-**Measured, not claimed.** In an empty repo where the brand could travel only by file, Claude Code and Codex matched the brand's fonts in 0 of 18 pieces without a DESIGN.md and in 53 of 54 with one. [See the drift test](https://briefatto.com/guides/does-design-md-keep-your-brand-drift-test/).
+**Measured.** In an empty repo where the brand could travel only by file, Claude Code and Codex matched the brand's fonts in 0 of 18 pieces without a DESIGN.md and in 53 of 54 with one. [See the drift test](https://briefatto.com/guides/does-design-md-keep-your-brand-drift-test/).
 
 [Adopt an existing site or start a brand from a brief](#start). [Guides for Claude Code, Codex, Cursor, Copilot, Gemini CLI and more](https://briefatto.com/guides/). [39 ready DESIGN.md files for popular brands](https://github.com/Briefatto/design-md-gallery).
 
@@ -58,14 +58,14 @@ npx briefatto-board adopt .
 npx briefatto-board freeze .
 ```
 
-**Starting a brand → directions → pick → kit.** Put the brief in `brief.md` and ask your agent to follow the skill. It asks once for any fact the brief leaves out, draws three directions in your brand and stops for one answer: pick one, ask for changes, or let the agent choose. Then it writes the design guide, freezes it and makes the kit. Use the chosen direction ID in place of `lead`.
+**Starting a brand → directions → pick → kit.** Put the brief in `brief.md` and ask your agent to follow the skill. It draws three directions with your real copy and stops once: pick one, ask for changes, or say 'you choose'. Any fact the brief leaves out is asked for in that same message and never invented. Then it writes the design guide, freezes it and makes the kit. Use the chosen direction ID in place of `lead`.
 
 ```sh
 npx briefatto-board directions .
 npx briefatto-board freeze . lead
 ```
 
-Your pick is the production approval: the agent records your exact words in a fenced `approval lead` block in `refs/notes.md`. When you let the agent choose, it freezes with `board freeze . lead --agent-picked "<reason>"` and hands over the kit with the other two directions beside it; name another one and it switches. If you are working alone as your own client, run `board freeze . lead --self-approved`. `board log` records the decision.
+Your pick is the production approval: the agent records your exact words in a fenced `approval lead` block in `refs/notes.md`. When you say 'you choose', it freezes with `board freeze . lead --agent-picked "<reason>"` and hands over the kit with the other two directions beside it; name another one and it switches. If you are working alone as your own client, run `board freeze . lead --self-approved`. `board log` records the decision.
 
 Node.js 24 or later. The first render prints the Playwright command to install Chromium if it is missing.
 
@@ -98,7 +98,7 @@ A design system's first reader is now a coding agent. We built Briefatto Board f
 - **Taste belongs to the model.** Your agent's model makes every aesthetic call and improves every year. We ship no taste rubric: one would cap the model and become its target.
 - **The floor belongs to code.** `board check` fails what is provably wrong: text that is clipped, off the canvas, overlapping or too small where it is seen, fonts that never loaded, contrast below WCAG, Impeccable's anti-patterns. Exported PNG and PDF files match their source.
 - **One brand for every agent.** Claude Code, Codex, Cursor, Copilot and Gemini CLI read the same frozen DESIGN.md, months and sessions apart, and after a brand change `board status` names every stale piece.
-- **Pictures carry intent.** Designers never closed the intent gap with words. The agent draws three directions in your own brand, and you point at one or hand it the choice.
+- **Pictures carry intent.** Designers never closed the intent gap with words. The agent draws three directions with your real copy. You point at one, or say 'you choose'.
 - **The repository is the brand system.** DESIGN.md lives in Git, so review, pull requests, permissions and history work on it. `board freeze`, `board diff` and `board status` add brand versions.
 
 Read the full [design principles](docs/PRINCIPLES.md) and [how it works](docs/ARCHITECTURE.md).
@@ -135,7 +135,7 @@ Export the finished files and list every delivery PNG and PDF in project-root `d
 
 - Add `"transparent":true` for a transparent PNG. Use `viewport` with `width` and `height` when the HTML lays out at a different CSS size. Board scales the capture by the export width divided by the viewport width. Add `"fullPage":true` for a PNG of the full scroll height.
 - PDF entries describe one page. Board rasterizes the page with PDF.js and compares it with the HTML in print media. The page aspect must fit within one comparison pixel on either axis. Optional `pageSizeMm` checks the visible page box to within 0.1 mm on each axis. Use the full page size including bleed when the visible page includes it.
-- A PNG must match every decoded RGBA pixel. Board ignores RGB values under fully transparent pixels. Lossless encoding of the same Chromium capture preserves these pixels exactly. PDFs allow a mean maximum-channel difference of 2 on a 0–255 scale and at most 2% of pixels differing by more than 32. In each 64 × 64 pixel tile, Board also compares pixels in both directions within one pixel of their position to account for rasterizer edge placement. The mean after this allowance must be at most 5. The A3 export measured 0.40 overall, 0.53% above 32, and 2.44 in the worst tile. A smaller type-and-vector PDF also passes. Removing a short date line stayed within the overall limits and exceeded the tile limit. The PDF regressions cover both scenarios.
+- PNGs match their HTML pixel for pixel; PDFs match within a [rasterizer tolerance](docs/ARCHITECTURE.md#export-tolerance).
 
 Run `board check .` to validate the listed files, or pass HTML filenames to run layout checks too. `board kit .` requires a frozen guide and includes the layout checks and final-file results in `outputs/kit-check.json`. Each export row records the SHA-256 of the checked bytes. Use independently renderable HTML as the source for each export. With no manifest, `board check` renders HTML previews. `board kit` checks the format-named PNGs alongside their HTML and creates one only if it is missing. Use `board render <file.html>` to regenerate these PNGs after editing the HTML.
 
@@ -148,7 +148,7 @@ Run `board check .` to validate the listed files, or pass HTML filenames to run 
   </picture>
 </p>
 
-Record the client's words, update `DESIGN.md`, and freeze again with a note. `board diff` shows what changed, and `board status` shows what still needs revisiting. Nothing is redrawn behind your back.
+Record the client's words, update `DESIGN.md`, and freeze again with a note. `board diff` shows what changed, and `board status` shows what still needs revisiting. You decide what gets redrawn.
 
 ```sh
 npx briefatto-board freeze . lead --note "Signal weight from orange to green"

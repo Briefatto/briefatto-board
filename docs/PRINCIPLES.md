@@ -19,7 +19,7 @@ On its way to the screen, intent passes through four steps and loses something a
 
 Then the next session starts from the brief and draws something else. That loss, continuity, compounds with every session, and it is why we call today's AI design a slot machine. Each pull can pay out a great page, nothing ties one pull to the next, and anyone who wants a brand is left pulling again and choosing by hand. A better prompt only reaches the loss of expression, and a better model still starts every session from zero. Making agents better designers leaves continuity where it was.
 
-Designers never closed this gap with better words. They worked from the client's material, showed options as pictures in the client's own brand, and waited for the client to put a finger on one and say "this one". Briefatto Board makes that practice the protocol an agent runs, and a person who would rather not choose hands the pick to the agent.
+Designers never closed this gap with better words. They worked from the client's material, showed options as pictures in the client's own brand, and waited for the client to put a finger on one and say "this one". Briefatto Board makes that practice the protocol an agent runs. Say 'you choose' and the agent picks and tells you why.
 
 | Designer's practice | Board step | Loss it closes |
 | :--- | :--- | :--- |
@@ -53,8 +53,6 @@ Each check is objective and matters for every model that will ever exist, since 
 
 ## One brand, held across every agent
 
-
-
 `board freeze` records the brand's source wording and the exact styles from a fresh render, validates the written guide against them, and stamps a new version. Claude Code, Codex, Cursor, Copilot and Gemini CLI read that DESIGN.md before any visual work. Each piece declares the version it was made under, so after a brand change `board status` names every stale piece and `board diff` shows what moved.
 
 ## The repository is the brand system
@@ -65,6 +63,6 @@ A brand change becomes a pull request. The reviewer reads the new guide, `board 
 
 ## Proof
 
-In a blind test on the open-source project Issue Composer, all four judges ranked the Briefatto Board kit first overall, ahead of Impeccable, Taste Skill and Hallmark. Our kit carried no taste rubric. The model made every call, while the board held the brand and its floor caught what code can prove.
+We ran three blind tests on real open-source sites. On Issue Composer, all four blind judges ranked the Briefatto Board kit first, ahead of Impeccable, Taste Skill and Hallmark: [see every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/). On Pyxel, all four blind judges again ranked it first, this time ahead of Anthropic's frontend-design skill: [blind test 2](https://briefatto.com/guides/frontend-design-skill-vs-briefatto-board-blind-test/). On PocketBase, every blind judge ranked it above UI UX Pro Max: [blind test 3](https://briefatto.com/guides/ui-ux-pro-max-vs-briefatto-board-blind-test/). Raw data: [Hugging Face](https://huggingface.co/datasets/briefatto-lab/design-kit-evals) · [DOI 10.5281/zenodo.24436111](https://doi.org/10.5281/zenodo.24436111).
 
-[See every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/).
+Our kit carried no taste rubric. The model made every call, while the board held the brand and its floor caught what code can prove.

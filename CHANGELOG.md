@@ -2,10 +2,10 @@
 
 ## 0.1.6
 
-- Stop the brief path for the person once, at the three direction sheets: pick one, ask for changes, or hand the choice to the agent. The pick is the production approval. Missing facts are asked for in one message at the start, or named as missing at handoff.
+- One stop on the brief path: the three direction sheets. Pick one, ask for changes, or say 'you choose'. Missing facts are asked for in that same message, or named as missing at handoff; never invented. The pick is the production approval.
 - Add `board freeze . <id> --agent-picked "<reason>"` for a first freeze the person delegated. `board log` shows the reason, the handoff shows the other two directions, and `board freeze . <other-id> --note "Switch to direction <other-id>"` switches.
 - Use and record every client reference. The agent's own reference capture is research and is never shown for a pick.
-- Report a cream-palette finding as a note when the page colour is in the frozen board, as an overused-font finding already is for a declared typeface.
+- A page colour the frozen board declares, such as a cream ground the client asked for, passes the floor with a note.
 
 ## 0.1.5
 
