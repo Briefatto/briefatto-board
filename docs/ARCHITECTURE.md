@@ -24,10 +24,6 @@ A design layer for agents has two jobs that pull in opposite directions. It has 
 
 **Status and diff.** Each piece declares its version in its head: `<meta name="board-version" content="v2">`. `board status` reads that tag from every piece under `outputs/` and reports it current, stale or unrecorded. When `board check` finds a piece using colours or fonts outside the current board, it names the version they came from, and status carries that finding while the piece's source is unchanged. `board diff v1 v2` compares measured values role by role. `board log` lists every version with its date, its note and how the first freeze was approved.
 
-### Export tolerance
-
-A PNG must match every decoded RGBA pixel. Board ignores RGB values under fully transparent pixels. Lossless encoding of the same Chromium capture preserves these pixels exactly. PDFs allow a mean maximum-channel difference of 2 on a 0–255 scale and at most 2% of pixels differing by more than 32. In each 64 × 64 pixel tile, Board also compares pixels in both directions within one pixel of their position to account for rasterizer edge placement. The mean after this allowance must be at most 5. The A3 export measured 0.40 overall, 0.53% above 32, and 2.44 in the worst tile. A smaller type-and-vector PDF also passes. Removing a short date line stayed within the overall limits and exceeded the tile limit. The PDF regressions cover both scenarios.
-
 ## The data flow
 
 ```
@@ -118,5 +114,7 @@ The freeze fails. The report gives the line, the claimed value and the nearest v
 
 Any coding agent that reads `AGENTS.md` or `CLAUDE.md` and runs shell commands: Claude Code (through CLAUDE.md) and the agents that read AGENTS.md: Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf, Zed, OpenCode, Amp, Jules, Devin, Aider, goose, Warp, Junie, Roo Code, Kilo Code, Factory and Augment Code. The board is a skill file and a CLI, and the brand lives in plain files in the repository, so every agent reads the same frozen guide.
 
+## Export tolerance
+A PNG must match every decoded RGBA pixel. Board ignores RGB values under fully transparent pixels. Lossless encoding of the same Chromium capture preserves these pixels exactly. PDFs allow a mean maximum-channel difference of 2 on a 0–255 scale and at most 2% of pixels differing by more than 32. In each 64 × 64 pixel tile, Board also compares pixels in both directions within one pixel of their position to account for rasterizer edge placement. The mean after this allowance must be at most 5. The A3 export measured 0.40 overall, 0.53% above 32, and 2.44 in the worst tile. A smaller type-and-vector PDF also passes. Removing a short date line stayed within the overall limits and exceeded the tile limit. The PDF regressions cover both scenarios.
 
 More: [design principles](PRINCIPLES.md) · [the intent gap essay](https://briefatto.com/guides/intent-gap-design-principles/) · [design infrastructure for AI agents](https://briefatto.com/guides/design-infrastructure-for-ai-agents/)
