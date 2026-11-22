@@ -1,0 +1,13 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "Briefatto Board",
+  "description": "One versioned DESIGN.md that Claude Code, Codex, Cursor, Copilot, Gemini CLI and every AGENTS.md agent reads before visual work, with a render-and-check quality floor and stale-piece status.",
+  "folders": ["docs", "skill", "examples"],
+  "excludeFolders": ["src", "dist", "node_modules", ".github"],
+  "rules": [
+    "Run `npx briefatto-board install` in the project root; it adds the skill and a pointer in AGENTS.md and CLAUDE.md.",
+    "Adopt an existing site with `npx briefatto-board adopt .`, write DESIGN.md from the captures, then `npx briefatto-board freeze .`.",
+    "Read DESIGN.md before any visual work and run `npx briefatto-board check .` on every rendered piece before hand-over.",
+    "After a brand change, freeze again with a note and use `npx briefatto-board status` to list stale pieces."
+  ]
+}
