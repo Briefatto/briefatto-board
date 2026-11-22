@@ -18,7 +18,7 @@ claude plugin marketplace add Briefatto/briefatto-board
 claude plugin install briefatto-board@briefatto
 ```
 
-**Blind-tested.** On a real open-source site, all four blind judges ranked Briefatto Board's work first, ahead of Impeccable, Taste Skill and Hallmark. [See every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/).
+**Blind-tested.** On a real open-source site, all four blind judges ranked Briefatto Board's work first, ahead of Impeccable, Taste Skill and Hallmark. [See every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/). On a second site, Pyxel, all four blind judges again ranked it first, this time ahead of Anthropic's frontend-design skill: [blind test 2](https://briefatto.com/guides/frontend-design-skill-vs-briefatto-board-blind-test/).
 
 **Measured, not claimed.** In an empty repo where the brand could travel only by file, Claude Code and Codex matched the brand's fonts in 0 of 18 pieces without a DESIGN.md and in 53 of 54 with one. [See the drift test](https://briefatto.com/guides/does-design-md-keep-your-brand-drift-test/).
 
