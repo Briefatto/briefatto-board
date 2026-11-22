@@ -1,13 +1,13 @@
 {
   "name": "briefatto",
-  "description": "Briefatto plugins for coding agents",
+  "description": "Design infrastructure for AI agents.",
   "owner": { "name": "Briefatto" },
   "plugins": [
     {
       "name": "briefatto-board",
       "source": "./",
-      "description": "Versioned DESIGN.md for coding agents: one design guide read before visual work, plus design checks.",
-      "version": "0.1.6",
+      "description": "The design layer for every agent: one versioned DESIGN.md read before visual work, and a quality floor that checks clipped text, fonts, contrast and AI-design tells.",
+      "version": "0.1.7",
       "license": "Apache-2.0",
       "homepage": "https://briefatto.com",
       "keywords": ["design-md", "design-system", "design-lint"]

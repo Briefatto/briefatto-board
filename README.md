@@ -1,5 +1,5 @@
 # Briefatto Board
-One versioned design guide (DESIGN.md) that Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf and every other coding agent reads before visual work. `npx briefatto-board install` adds a pointer to AGENTS.md and CLAUDE.md, and each rendered piece is checked against a quality floor.
+Briefatto Board is the design layer for agents: one versioned design guide (DESIGN.md) that every agent reads before visual work, and a quality floor every rendered piece must pass. `npx briefatto-board install` writes its pointer into `AGENTS.md` and `CLAUDE.md`.
 
 ```sh
 npx briefatto-board install
@@ -22,7 +22,7 @@ claude plugin install briefatto-board@briefatto
 
 **Measured.** In an empty repo where the brand could travel only by file, Claude Code and Codex matched the brand's fonts in 0 of 18 pieces without a DESIGN.md and in 53 of 54 with one. [See the drift test](https://briefatto.com/guides/does-design-md-keep-your-brand-drift-test/).
 
-[Adopt an existing site or start a brand from a brief](#start). [Guides for Claude Code, Codex, Cursor, Copilot, Gemini CLI and more](https://briefatto.com/guides/). [39 ready DESIGN.md files for popular brands](https://github.com/Briefatto/design-md-gallery).
+[Adopt an existing site or start a brand from a brief](#start). [Guides for every agent](https://briefatto.com/guides/). [39 ready DESIGN.md files for popular brands](https://github.com/Briefatto/design-md-gallery).
 
 <p align="center">
   <picture>
@@ -35,13 +35,13 @@ claude plugin install briefatto-board@briefatto
   <a href="https://www.npmjs.com/package/briefatto-board"><img src="https://img.shields.io/npm/v/briefatto-board?style=flat-square&color=2538E8&label=npm" alt="npm version"></a>
   <a href="https://github.com/Briefatto/briefatto-board/actions/workflows/ci.yml"><img src="https://github.com/Briefatto/briefatto-board/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-Apache--2.0-151515?style=flat-square" alt="Apache-2.0 licence"></a>
-  <a href="#works-with-any-coding-agent"><img src="https://img.shields.io/badge/works%20with-any%20coding%20agent-62625D?style=flat-square" alt="Works with any coding agent"></a>
+  <a href="#every-agent"><img src="https://img.shields.io/badge/built%20for-every%20agent-62625D?style=flat-square" alt="Built for every agent"></a>
 </p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/idea-dark.png">
-    <img src=".github/assets/idea-light.png" width="830" alt="Three agent sessions on different days read the same DESIGN.md, version 2, and produce a README header, a link card and a square post in the same brand">
+    <img src=".github/assets/idea-light.png" width="830" alt="Two agent sessions on different days read the same DESIGN.md, version 2, and produce a link card and a square post in the same brand.">
   </picture>
 </p>
 
@@ -93,19 +93,19 @@ This is what the CLI printed on the Plumb example, after a brand change: a stale
 
 ## Design principles
 
-A design system's first reader is now a coding agent. We built Briefatto Board for that reader, on one split: taste in the model, proof in code.
+A design system's first reader is now an agent. We built Briefatto Board for that reader, on one split: taste in the model, proof in code.
 
 - **Taste belongs to the model.** Your agent's model makes every aesthetic call and improves every year. We ship no taste rubric: one would cap the model and become its target.
 - **The floor belongs to code.** `board check` fails what is provably wrong: text that is clipped, off the canvas, overlapping or too small where it is seen, fonts that never loaded, contrast below WCAG, Impeccable's anti-patterns. Exported PNG and PDF files match their source.
-- **One brand for every agent.** Claude Code, Codex, Cursor, Copilot and Gemini CLI read the same frozen DESIGN.md, months and sessions apart, and after a brand change `board status` names every stale piece.
+- **One brand for every agent.** Every agent reads the same frozen DESIGN.md, months and sessions apart, and after a brand change `board status` names every stale piece.
 - **Pictures carry intent.** Designers never closed the intent gap with words. The agent draws three directions with your real copy. You point at one, or say 'you choose'.
 - **The repository is the brand system.** DESIGN.md lives in Git, so review, pull requests, permissions and history work on it. `board freeze`, `board diff` and `board status` add brand versions.
 
 Read the full [design principles](docs/PRINCIPLES.md) and [how it works](docs/ARCHITECTURE.md).
 
-### Works with any coding agent
+### Every agent
 
-Briefatto Board is a command-line tool and a skill file. It works with any coding agent that reads `AGENTS.md` and runs shell commands. That includes Claude Code (through `CLAUDE.md`) and the agents that read `AGENTS.md`: Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf, Zed, OpenCode, Amp, Jules, Devin, Aider, goose, Warp, Junie, Roo Code, Kilo Code, Factory and Augment Code.
+Briefatto Board works with every agent. The guide is a plain file in your project, the protocol is a plain skill file, and the work is done by a CLI any agent can call.
 
 ## Made with Briefatto Board
 
@@ -175,4 +175,4 @@ Apache-2.0. See [LICENSE](LICENSE), [NOTICE](NOTICE) and [THIRD_PARTY.md](THIRD_
 
 ---
 
-<p align="center"><sub>Made by <a href="https://briefatto.com">Briefatto Lab</a>, design infrastructure for AI agents.</sub></p>
+<p align="center"><a href="https://briefatto.com">Briefatto Lab</a> builds design infrastructure for AI agents. One day, every pixel an agent ships will pass through Briefatto.</p>

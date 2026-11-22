@@ -1,7 +1,7 @@
 {
   "$schema": "https://context7.com/schema/context7.json",
   "projectTitle": "Briefatto Board",
-  "description": "One versioned DESIGN.md that Claude Code, Codex, Cursor, Copilot, Gemini CLI and every AGENTS.md agent reads before visual work, with a render-and-check quality floor and stale-piece status.",
+  "description": "The design layer for agents: one versioned DESIGN.md that every agent reads before visual work, with a render-and-check quality floor and stale-piece status.",
   "folders": ["docs", "skill", "examples"],
   "excludeFolders": ["src", "dist", "node_modules", ".github"],
   "rules": [

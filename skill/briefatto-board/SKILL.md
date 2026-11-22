@@ -5,7 +5,7 @@ description: Use before any UI, layout, copy-on-image or brand work to read and 
 
 # Design board
 
-`npx briefatto-board install` places this skill under `.claude/skills/` and adds pointers in `AGENTS.md` and `CLAUDE.md`. The skills CLI installs it for the selected agents.
+`npx briefatto-board install` places this skill under `.claude/skills/` and adds pointers in `AGENTS.md` and `CLAUDE.md`. The skills CLI installs it too.
 
 If the project has a frozen `DESIGN.md`, read it before visual work and go straight to making pieces.
 
@@ -35,7 +35,7 @@ This path stops for the person once, at step 5, and not at all on the 'you choos
 5. **The one stop.** Unless the person has handed you the choice, show the three direction sheets and say: "Pick one, ask for changes, or say you choose and I'll finish the kit."
    - **A pick**, with or without changes, is the production approval. Record the person's words verbatim in `refs/notes.md`: the approval in a fenced `approval <id>` block, each confirmed brand must or must-not in its own fenced `constraint` block. Apply any changes, run `board directions . <id>`, and continue; show the revised sheet first only if asked. If none fits, show replacements.
    - **You choose:** when the person hands you the choice in any words or language, at the start or here, or when no one is available (a headless run, another agent calling), pick, write a one-sentence reason, and freeze in step 6 with `board freeze . <id> --agent-picked "<reason>"`.
-   - **Solo developer** who explicitly approves a direction as their own client: freeze with `board freeze . <id> --self-approved`.
+   - **Working alone**, as your own client: approve the direction explicitly, then freeze with `board freeze . <id> --self-approved`.
 
 ## Freeze → make pieces → feedback
 

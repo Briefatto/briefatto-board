@@ -32,7 +32,7 @@ Designers never closed this gap with better words. They worked from the client's
 
 ## Taste belongs to the model
 
-Aesthetic judgement lives in the model inside your coding agent, and that model gets stronger every year. We built the board so that every gain in the model becomes a gain in your design on the day the model ships.
+Aesthetic judgement lives in the model inside your agent, and that model gets stronger every year. We built the board so that every gain in the model becomes a gain in your design on the day the model ships.
 
 We ship no taste rubric, and the reason is mechanical. A fixed rubric caps a stronger model at the taste of whoever wrote the rules. It also becomes the target, because an agent optimises what it is scored on. That is Goodhart's law, and its end state is work that passes every score after losing what made it good.
 
@@ -53,7 +53,7 @@ Each check is objective and matters for every model that will ever exist, since 
 
 ## One brand, held across every agent
 
-`board freeze` records the brand's source wording and the exact styles from a fresh render, validates the written guide against them, and stamps a new version. Claude Code, Codex, Cursor, Copilot and Gemini CLI read that DESIGN.md before any visual work. Each piece declares the version it was made under, so after a brand change `board status` names every stale piece and `board diff` shows what moved.
+`board freeze` records the brand's source wording and the exact styles from a fresh render, validates the written guide against them, and stamps a new version. Every agent reads that DESIGN.md before any visual work. Each piece declares the version it was made under, so after a brand change `board status` names every stale piece and `board diff` shows what moved.
 
 ## The repository is the brand system
 
@@ -66,3 +66,5 @@ A brand change becomes a pull request. The reviewer reads the new guide, `board 
 We ran three blind tests on real open-source sites. On Issue Composer, all four blind judges ranked the Briefatto Board kit first, ahead of Impeccable, Taste Skill and Hallmark: [see every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/). On Pyxel, all four blind judges again ranked it first, this time ahead of Anthropic's frontend-design skill: [blind test 2](https://briefatto.com/guides/frontend-design-skill-vs-briefatto-board-blind-test/). On PocketBase, every blind judge ranked it above UI UX Pro Max: [blind test 3](https://briefatto.com/guides/ui-ux-pro-max-vs-briefatto-board-blind-test/). Raw data: [Hugging Face](https://huggingface.co/datasets/briefatto-lab/design-kit-evals) · [DOI 10.5281/zenodo.24436111](https://doi.org/10.5281/zenodo.24436111).
 
 Our kit carried no taste rubric. The model made every call, while the board held the brand and its floor caught what code can prove.
+
+One day, every pixel an agent ships will pass through Briefatto.

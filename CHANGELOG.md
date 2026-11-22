@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7
+
+- Briefatto Board is for every agent: the guide is a plain file in the project, the protocol is a plain skill file, and the work is done by a CLI any agent can call.
+
 ## 0.1.6
 
 - One stop on the brief path: the three direction sheets. Pick one, ask for changes, or say 'you choose'. Missing facts are asked for in that same message, or named as missing at handoff; never invented. The pick is the production approval.
@@ -9,11 +13,11 @@
 
 ## 0.1.5
 
-- Add design principles and an architecture guide, name every supported agent (Claude Code and the agents that read AGENTS.md), link the blind test and the DESIGN.md gallery, and add the Claude Code plugin install.
+- Add design principles and an architecture guide, link the blind test and the DESIGN.md gallery, and add the Claude Code plugin install.
 
 ## 0.1.4
 
-- Document skills.sh installation and improve npm metadata for coding-agent discovery.
+- Document skills.sh installation and improve npm metadata.
 
 ## 0.1.3
 
