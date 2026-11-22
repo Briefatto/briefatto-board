@@ -882,3 +882,25 @@ test("the bakery closure needs no subscription pitch or photo unless opted into 
   assert.match(smallBrand, /^FAIL 24-december-closure\.html:.*brand-too-small: "Moller Bread"/m);
   assert.doesNotMatch(smallBrand, /essential-missing|asset-missing/);
 });
+
+test("only a page colour in the current frozen board turns a cream palette into a note", () => {
+  using project = scratch();
+  const currentDir = join(project.path, "board");
+  const base = fixture();
+  const r: Rendered = { ...base.samples[0] as unknown as Rendered, png: "", width: 1440, height: 900, contrast: [], family: null,
+    colours: [{ value: "rgb(245, 239, 227)", kind: "bg", area: 1440 * 900 }],
+    texts: [], radii: [], images: [], shadows: 0, fontLinks: [], devices: [] };
+  const board = { ...boardFromRenders("Test board", { id: "pick", title: "Pick", text: "" }, [{ file: "directions/pick/hero.html", fmt: "hero", r }], "board"), version: 1, note: "", type: {} };
+  const guide = ["---", "name: Test board", "---", "", "## Colour", "The page is warm paper, #F5EFE3.", ""].join("\n");
+  writeBoard(currentDir, { ...board, designHash: designHash(guide) });
+  writeFileSync(join(currentDir, "DESIGN.md"), guide);
+  writeFileSync(join(project.path, "DESIGN.md"), guide);
+  const file = join(project.path, "hero.html");
+  const page = (ground: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Paper</title><style>
+    body { margin: 0; background: ${ground}; color: #1d1a16; font: 32px Georgia, serif; } main { padding: 48px; }
+  </style></head><body><main><h1>Warm paper headline</h1><p>Some body copy for the page.</p></main></body></html>`;
+  writeFileSync(file, page("#F5EFE3"));
+  assert.match(runBoard(project.path, "check", ".", file), /^PASS hero: floor 0;.*note: cream-palette: .*\(declared in frozen DESIGN\.md\)/m);
+  writeFileSync(file, page("#EFE8DA"));
+  assert.match(failedBoard(project.path, "check", ".", file), /^FAIL hero:.*cream-palette/m);
+});

@@ -9,6 +9,7 @@ import { env, execPath, platform } from "node:process";
 import type { Page } from "playwright";
 import type { Rendered } from "./render.js";
 import { bodyTextPx, minTextPx, MIN_SEEN_TEXT_PX, type BoardFormat } from "./formats.js";
+import { toHex } from "./metrics.js";
 import { copyWhitespace, isSuppliedImage, matchesCampaignCopy, norm, requiredCampaignCopy, urlLike, type Essentials } from "./essentials.js";
 
 export interface FloorFault { rule: string; detail: string; source: "impeccable" | "render" | "brief" }
@@ -54,7 +55,7 @@ export function impeccable(htmlPath: string): FloorFault[] {
 
 const wrapperPadding = /^<([\w-]+)>(?: "([^"]+)")?: children flush against .+ on (?:all sides|(?:top|right|bottom|left)(?:\/(?:top|right|bottom|left))*) \(no inset\)$/;
 
-export async function checkImpeccable(findings: FloorFault[], page: Page, brandFonts?: ReadonlySet<string>): Promise<SourceFloor> {
+export async function checkImpeccable(findings: FloorFault[], page: Page, brandFonts?: ReadonlySet<string>, brandColours?: ReadonlySet<string>): Promise<SourceFloor> {
   const wrappers = findings.flatMap(({ rule, detail }) => {
     const match = rule === "cramped-padding" ? wrapperPadding.exec(detail) : null;
     if (!match) return [];
@@ -82,7 +83,10 @@ export async function checkImpeccable(findings: FloorFault[], page: Page, brandF
       continue;
     }
     const family = finding.rule === "overused-font" ? /^Primary font: (.+)$/.exec(finding.detail)?.[1] : undefined;
-    if (family && brandFonts?.has(family.trim().toLowerCase())) {
+    // A page colour the client chose and froze is the brand's palette, not a default the model fell into.
+    const ground = finding.rule === "cream-palette" ? /rgba?\([^)]*\)/.exec(finding.detail)?.[0] : undefined;
+    const groundHex = ground ? toHex(ground) : null;
+    if ((family && brandFonts?.has(family.trim().toLowerCase())) || (groundHex && brandColours?.has(groundHex))) {
       result.designNotes.push({ ...finding, detail: `${finding.detail} (declared in frozen DESIGN.md)` });
     } else {
       result.floor.push(finding);

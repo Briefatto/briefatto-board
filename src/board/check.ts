@@ -208,6 +208,8 @@ export async function check(board: Board | null, files: string[], opts: {
     const colours = opts.designs?.size ? await frozenColours(renderer, opts.designs) : new Map<number, Set<string>>();
     const currentDesign = board ? opts.designs?.get(board.version) : undefined;
     const brandFonts = currentDesign === undefined ? undefined : designTypographyFamilies(currentDesign);
+    const brandColours = board ? new Set([...board.palette.map((p) => p.hex), ...(colours.get(board.version) ?? [])]
+      .map(toHex).filter((hex): hex is string => !!hex)) : undefined;
     const essentials = campaignEssentials(board?.essentials, opts.project);
     for (const f of files) {
       const campaign = board ? readPiece(f).campaign ?? (opts.brief ? board.name : undefined) : undefined;
@@ -220,7 +222,7 @@ export async function check(board: Board | null, files: string[], opts: {
       const preview = opts.previewDir ? join(opts.previewDir, `${results.length}-${basename(f).replace(/\.html?$/i, "")}.png`)
         : kit ? undefined : f.replace(/\.html?$/i, ".check.png");
       const r = await renderer.render(f, kit, preview, false, undefined, undefined, async (page) => {
-        source = await checkImpeccable(findings, page, brandFonts);
+        source = await checkImpeccable(findings, page, brandFonts, brandColours);
       });
       // Custom HTML is read at its native screen size, using the existing native-size text floor.
       const fmt = kit ?? { ...formatById("hero"), id: "html", height: r.height };
