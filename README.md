@@ -1,5 +1,5 @@
 # Briefatto Board
-Briefatto Board is the design layer for agents: one versioned design guide (DESIGN.md) that every agent reads before visual work, and a quality floor every rendered piece must pass. `npx briefatto-board install` writes its pointer into `AGENTS.md` and `CLAUDE.md`.
+Briefatto Board is the design layer for every agent: one versioned design guide (DESIGN.md) that every agent reads before visual work, and a quality floor every rendered piece must pass. `npx briefatto-board install` writes its pointer into `AGENTS.md` and `CLAUDE.md`.
 
 ```sh
 npx briefatto-board install
@@ -22,7 +22,7 @@ claude plugin install briefatto-board@briefatto
 
 **Measured.** In an empty repo where the brand could travel only by file, Claude Code and Codex matched the brand's fonts in 0 of 18 pieces without a DESIGN.md and in 53 of 54 with one. [See the drift test](https://briefatto.com/guides/does-design-md-keep-your-brand-drift-test/).
 
-[Adopt an existing site or start a brand from a brief](#start). [Guides for every agent](https://briefatto.com/guides/). [39 ready DESIGN.md files for popular brands](https://github.com/Briefatto/design-md-gallery).
+[Adopt an existing site or start a brand from a brief](#start). [Guides for every agent](https://briefatto.com/guides/). [110 ready DESIGN.md files for popular brands](https://github.com/Briefatto/design-md-gallery).
 
 <p align="center">
   <picture>
