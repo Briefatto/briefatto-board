@@ -1,53 +1,164 @@
-// Contact sheets for people: one per direction, one per kit, one side-by-side per brief. Pictures are shown scaled to a
-// common row height (the 300x250 banner at its native size); the native PNGs sit next to the sheet.
+// The two pictures a person sees: the comparison of the directions (one row each) and the kit at handover. Both
+// show the real pieces at one shared scale, in a quiet neutral frame, with plain words only: no measurements,
+// scores or check results. The stylescape at the end of this file is a different thing: freeze's record of the
+// measured board, kept in board/ for the agent and never shown to the person.
 
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempDisposableSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { PNG } from "pngjs";
-import { FORMATS } from "./formats.js";
+import { FORMATS, type BoardFormat } from "./formats.js";
 import type { Board } from "./freeze.js";
 import { Renderer, screenshotFullPage } from "./render.js";
 import { directionNotesHtml, escapeHtml as esc } from "./sheet-markdown.js";
 
-export interface SheetItem { label: string; png: string; width: number; height: number; note?: string }
-export interface SheetRow { title?: string; items: SheetItem[] }
+/** A picture on a sheet, captioned with its format label. */
+export interface SheetItem { label: string; png: string; width: number; height: number }
+/** One row: a direction (mark, name and one sentence), or a group of kit pieces with no heading. */
+export interface SheetRow { mark?: string; title?: string; note?: string; items: SheetItem[] }
+/** `line` is one quiet line under the title, such as what was delivered. */
+export interface SheetOptions { title: string; line?: string; rows: SheetRow[] }
+
+/** The screen a sheet is laid out for: the 1440x900 laptop viewport the built-in website hero is drawn for. */
+const SCREEN = FORMATS.find((f) => f.id === "hero")!;
+export const SHEET_MAX_WIDTH = SCREEN.width;
+// Frame sizes in CSS px, used both in the stylesheet and to work out how much of the screen the pieces get.
+const PAD = 32, GAP = 20, HEAD = 240;
+const TITLE = Math.ceil(28 * 1.25) + GAP, LINE = Math.ceil(14 * 1.45) + GAP, CAPTION = Math.ceil(13 * 1.4) + 6;
+
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+const headed = (r: SheetRow) => !!(r.mark || r.title || r.note);
+const rowWidth = (r: SheetRow, height: number) =>
+  (headed(r) ? HEAD + GAP : 0) + sum(r.items.map((i) => Math.floor((i.width / i.height) * height))) + GAP * Math.max(0, r.items.length - 1);
+
+/** Every piece on a sheet shares one height, so the rows line up and compare at a glance. The height is the largest
+ * that fits every row on the SCREEN: across, each row's heading column and pieces within its width; down, the title,
+ * the optional line and all rows with their captions within its height. No piece is shown above its native size.
+ * Three directions in hero, post and story come out at 208 px a piece on a 1021 x 898 canvas. The canvas is as wide
+ * as its widest row. */
+export function sheetLayout(o: Pick<SheetOptions, "rows" | "line">): { height: number; width: number } {
+  const rows = o.rows.filter((r) => r.items.length);
+  if (!rows.length) return { height: 0, width: SCREEN.width };
+  const down = (SCREEN.height - 2 * PAD - TITLE - (o.line ? LINE : 0) - rows.length * CAPTION - 2 * GAP * (rows.length - 1)) / rows.length;
+  const across = rows.map((r) => (SCREEN.width - 2 * PAD - (headed(r) ? HEAD + GAP : 0) - GAP * (r.items.length - 1)) /
+    sum(r.items.map((i) => i.width / i.height)));
+  const height = Math.floor(Math.min(down, ...across, ...rows.flatMap((r) => r.items.map((i) => i.height))));
+  return { height, width: 2 * PAD + Math.max(...rows.map((r) => rowWidth(r, height))) };
+}
+
+/** A format's plain name: "Square post 1080x1080" reads as "Square post". */
+const formatName = (label: string) => label.replace(/\s+\d+\s*[x×]\s*\d+$/, "");
 
 function canvasCaption(label: string, width: number, height: number): string {
-  const suffix = ` ${width}x${height}`;
-  const title = label.endsWith(suffix) ? label.slice(0, -suffix.length) : label;
-  return `${esc(title)} <span>· ${width} × ${height} px</span>`;
+  return `${esc(formatName(label))} <span>· ${width} × ${height} px</span>`;
 }
 
-export function sheetHtml(o: { title: string; sub?: string; swatches?: string[]; fonts?: string[]; rows: SheetRow[]; rowHeight?: number }): string {
-  const H = o.rowHeight ?? 520;
-  const item = (i: SheetItem) => {
-    const h = i.width <= 300 ? i.height : H;
-    const w = Math.round((i.width / i.height) * h);
-    return `<figure style="width:${w}px"><img src="${pathToFileURL(i.png).href}" width="${i.width}" height="${i.height}" alt="${esc(i.label)}"><figcaption>${canvasCaption(i.label, i.width, i.height)}${i.note ? `<br><span>${esc(i.note)}</span>` : ""}</figcaption></figure>`;
+/** A direction's mark and name from its id and the heading of direction.md: "A — Slipway", "Direction A: Thaw" and
+ * "Slipway" in directions/a all read as mark A and name Slipway. */
+export function directionLabel(id: string, title: string): { mark: string; name: string } {
+  const t = title.trim();
+  const lettered = t.match(/^(?:direction\s+)?([A-Za-z0-9])\s*[—–:.)-]\s+(.+)$/i);
+  if (lettered) return { mark: lettered[1].toUpperCase(), name: lettered[2].trim() };
+  const mark = /^[A-Za-z0-9]$/.test(id) ? id.toUpperCase() : "";
+  const bare = t.match(/^(?:direction\s+)?([A-Za-z0-9])$/i);
+  if (bare && (!mark || bare[1].toUpperCase() === mark)) return { mark: bare[1].toUpperCase(), name: "" };
+  return { mark, name: t === id ? "" : t };
+}
+
+/** The direction's idea in one plain sentence: the first sentence of the first prose paragraph of direction.md, with
+ * code, colour values and markdown taken out. Empty when the notes have no prose. */
+export function directionIdea(markdown: string): string {
+  let fenced = false;
+  const para: string[] = [];
+  for (const raw of markdown.replace(/^﻿/, "").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (/^(`{3,}|~{3,})/.test(line)) {
+      if (para.length) break;
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced) continue;
+    if (!line || /^(#|[-+*]\s|\d+[.)]\s|>|\||<|`)/.test(line)) {
+      if (para.length) break;
+      continue;
+    }
+    para.push(line);
+  }
+  const text = para.join(" ")
+    .replace(/`[^`]*`/g, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/(\*\*|__|\*|_)(\S(?:.*?\S)?)\1/g, "$2")
+    .replace(/\s*\([^)]*#[0-9a-fA-F]{3,8}\b[^)]*\)/g, "")
+    .replace(/#[0-9a-fA-F]{3,8}\b/g, "")
+    .replace(/\s+([,;.])/g, "$1").replace(/([,;])[,;]+/g, "$1").replace(/\s{2,}/g, " ").trim();
+  return (text.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? text).trim();
+}
+
+/** The brand as a person names it, for the pictures they see: the brief's heading without a "Brief:" label. */
+export const brandName = (briefHeading: string, fallback: string) =>
+  briefHeading.replace(/^brief\b\s*[:—–-]?\s*/i, "").trim() || fallback;
+
+/** A direction's row on the comparison sheet: mark, name, its idea in one sentence, and the samples rendered into
+ * directions/<id>/_values. */
+export function directionRow(dir: string, b: Pick<Board, "samples">, formats: BoardFormat[]): SheetRow {
+  const text = readFileSync(join(dir, "direction.md"), "utf8");
+  const id = basename(dir);
+  const { mark, name } = directionLabel(id, (text.match(/^#\s+(.+)$/m)?.[1] ?? id).trim());
+  return {
+    mark, title: name, note: directionIdea(text),
+    items: b.samples.map((s) => {
+      const f = s.canvas ?? formats.find((x) => x.id === s.format) ?? FORMATS.find((x) => x.id === s.format);
+      if (!f) throw new Error(`Unknown canvas in direction ${id}: ${s.format}.`);
+      return { label: f.label, png: join(dir, "_values", s.png), width: f.width, height: f.height };
+    }),
   };
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
-body{margin:0;padding:48px;background:#e9e9e6;font:16px/1.4 system-ui,sans-serif;color:#161616}
-h1{font-size:32px;margin:0 0 8px} .sub{max-width:1400px;color:#444;margin:0 0 20px;white-space:pre-wrap}
-.sw{display:flex;gap:8px;margin:0 0 8px} .sw i{display:block;width:56px;height:56px;border:1px solid #0002}
-.fonts{color:#444;margin:0 0 24px} h2{font-size:22px;margin:32px 0 12px}
-.row{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-end}
-figure{margin:0;max-width:100%} img{display:block;width:100%;height:auto;box-shadow:0 0 0 1px #0002;background:#fff} figcaption{font-size:14px;margin-top:6px} figcaption span{color:#666}
-</style></head><body><h1>${esc(o.title)}</h1>${o.sub ? `<p class="sub">${esc(o.sub)}</p>` : ""}${o.swatches?.length ? `<div class="sw">${o.swatches.map((c) => `<i style="background:${c}" title="${c}"></i>`).join("")}</div>` : ""}${o.fonts?.length ? `<p class="fonts">${esc(o.fonts.join(" · "))}</p>` : ""}${o.rows.map((r) => `${r.title ? `<h2>${esc(r.title)}</h2>` : ""}<div class="row">${r.items.map(item).join("")}</div>`).join("")}</body></html>`;
 }
 
-export async function writeSheet(htmlPath: string, pngPath: string, o: Parameters<typeof sheetHtml>[0], width = 2600, renderer?: Renderer) {
-  writeFileSync(htmlPath, sheetHtml(o));
+export function sheetHtml(o: SheetOptions): string {
+  const { height, width } = sheetLayout(o);
+  const fig = (i: SheetItem) => {
+    const w = Math.floor((i.width / i.height) * height);
+    return `<figure style="width:${w}px"><img src="${pathToFileURL(i.png).href}" style="width:${w}px;height:${height}px" alt="${esc(i.label)}"><figcaption>${esc(formatName(i.label))}</figcaption></figure>`;
+  };
+  const row = (r: SheetRow) => {
+    const header = headed(r)
+      ? `<header>${r.mark || r.title ? `<h2>${r.mark ? `<b>${esc(r.mark)}</b>` : ""}${r.title ? `<span>${esc(r.title)}</span>` : ""}</h2>` : ""}${r.note ? `<p>${esc(r.note)}</p>` : ""}</header>`
+      : "";
+    return `<section>${header}<div class="line">${r.items.map(fig).join("")}</div></section>`;
+  };
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(o.title)}</title><style>
+html,body{margin:0;background:#f3f3f1;width:${width}px}
+body{box-sizing:border-box;padding:${PAD}px;font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:#1b1b1b}
+h1{font-size:28px;line-height:1.25;font-weight:600;letter-spacing:-.01em;margin:0 0 ${GAP}px}
+.line-note{color:#666;font-size:14px;line-height:1.45;margin:-${GAP / 2}px 0 ${GAP}px;overflow-wrap:anywhere}
+section{display:flex;gap:${GAP}px;padding:${GAP}px 0;border-top:1px solid #00000021}
+section:first-of-type{border-top:0;padding-top:0} section:last-of-type{padding-bottom:0}
+header{flex:0 0 ${HEAD}px}
+h2{display:flex;align-items:baseline;gap:12px;margin:0;font-weight:600} h2 b{font-size:44px;line-height:1;font-weight:700} h2 span{font-size:22px;line-height:1.2}
+header p{margin:10px 0 0;color:#4a4a4a;font-size:15px;line-height:1.4}
+.line{display:flex;gap:${GAP}px;align-items:flex-end}
+figure{margin:0} img{display:block;box-shadow:0 0 0 1px #00000014;background:#fff}
+figcaption{font-size:13px;line-height:1.4;margin-top:6px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style></head><body><h1>${esc(o.title)}</h1>${o.line ? `<p class="line-note">${esc(o.line)}</p>` : ""}${o.rows.filter((r) => r.items.length).map(row).join("")}</body></html>`;
+}
+
+/** Write the sheet's HTML to `htmlPath` (a temporary file when undefined) and its picture to `pngPath`. */
+export async function writeSheet(htmlPath: string | undefined, pngPath: string, o: SheetOptions, renderer?: Renderer) {
+  using temporary = htmlPath ? undefined : mkdtempDisposableSync(join(tmpdir(), "board-sheet-"));
+  const html = htmlPath ?? join(temporary!.path, "sheet.html");
+  writeFileSync(html, sheetHtml(o));
   const r = renderer ?? new Renderer();
   try {
-    await screenshotFullPage(r, htmlPath, pngPath, width);
+    // A short viewport, so the picture ends where the sheet does.
+    await screenshotFullPage(r, html, pngPath, sheetLayout(o).width, { verifyImages: true, viewportHeight: 1 });
   } finally {
     if (!renderer) await r.close();
   }
 }
 
-// ---- Stylescape: a direction shown as a brand, not a swatch sheet: palette, type specimen, the graphic device,
-// image treatment, and the real applications (the samples).
+// ---- Stylescape: the frozen board's own record of what it measured: palette, type specimen, the graphic device,
+// image treatment and the samples. Freeze keeps it in board/ for the agent; it is never the person's picture.
 
 /** Cut a box (shares of the canvas) out of a PNG, with a little air around it. */
 export function cropPng(src: string, box: [number, number, number, number], out: string) {

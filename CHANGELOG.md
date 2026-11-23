@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.8
+
+- The one stop is one picture: `board directions .` writes `directions/sheet.png`, the three directions side by side, each with its letter, its name, one sentence and its real pieces at one height, all three on one laptop screen.
+- The handover kit sheet names the brand and the chosen direction, shows every piece larger than in the comparison on one baseline, and lists the delivered files in one quiet line.
+
 ## 0.1.7
 
 - Briefatto Board is for every agent: the guide is a plain file in the project, the protocol is a plain skill file, and the work is done by a CLI any agent can call.

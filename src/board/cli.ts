@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { constants, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { constants, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { adopt, adoptionPath, loadAdoption, selectAdoption } from "./adoption.js";
@@ -12,7 +12,7 @@ import { freeze, initialApproval, previewFreeze, renderBoard, validateApprovalOp
 import { boardValueKey, declareCampaign, hasOutsideValues, isPieceFile, outputFiles, pieceStatusText, pieceVersion, pieceVersionText, readPiece, recordValueObservation } from "./pieces.js";
 import { captureReferences, writeReferenceSheet } from "./refs.js";
 import { Renderer } from "./render.js";
-import { writeSheet, writeStylescape, type SheetItem } from "./sheet.js";
+import { brandName, directionLabel, directionRow, writeSheet, type SheetItem, type SheetRow } from "./sheet.js";
 import { prepareStandingInstructions } from "./standing.js";
 import { parseVersion, readBoard, readBoardVersion, readFrozenDesign, versionLabel } from "./versions.js";
 
@@ -229,18 +229,39 @@ async function main() {
     const project = resolve(scope[0] ?? ".");
     const root = join(project, "directions");
     if (!existsSync(root)) throw new Error("No directions yet. Run board refs to prepare the client reference sheet first.");
-    const directions = readdirSync(root).filter((d) => !d.startsWith("_") && existsSync(join(root, d, "direction.md")));
+    const directions = readdirSync(root).filter((d) => !d.startsWith("_") && existsSync(join(root, d, "direction.md"))).sort();
     const selected = scope[1];
     if (selected && !directions.includes(selected)) throw new Error(`Direction ${selected} not found in ${root}.`);
+    // The person sees one picture: every direction in one row each, directions/sheet.png. Naming a direction
+    // re-renders only that one, rebuilds the comparison from the others' last render, and also writes the named
+    // direction alone to directions/<id>/sheet.png for showing a revision. A full run removes those single sheets,
+    // which would otherwise show an older render.
+    const formats = loadProjectFormats(project);
+    const rows: SheetRow[] = [];
     const r = new Renderer();
     try {
-      for (const id of selected ? [selected] : directions) {
+      for (const id of directions) {
         const dir = join(root, id);
-        const b = await renderBoard({ directionDir: dir, boardDir: join(dir, "_values"), name: briefTitle(project), renderer: r });
-        await writeStylescape(b, join(dir, "_values"), `${briefTitle(project)}: direction ${id}, ${b.direction.title}`, join(dir, "sheet.png"), r);
-        console.log(join(dir, "sheet.png"));
-        if (args.includes("--check")) {
+        const values = join(dir, "_values");
+        const rendered = selected && id !== selected && existsSync(join(values, "board.json"));
+        const b = rendered ? readBoard(values) : await renderBoard({ directionDir: dir, boardDir: values, name: briefTitle(project), renderer: r });
+        rows.push(directionRow(dir, b, formats));
+        if (!rendered && args.includes("--check")) {
+          console.log(`${id}:`);
           for (const x of await checkSamples(dir, b, r)) console.log(`  sample ${line(x, undefined, versionLabel(b.version))}`);
+        }
+      }
+      const title = brandName(briefTitle(project), basename(project));
+      const sheet = join(root, "sheet.png");
+      await writeSheet(undefined, sheet, { title, rows }, r);
+      console.log(sheet);
+      for (const id of directions) {
+        const single = join(root, id, "sheet.png");
+        if (id === selected) {
+          await writeSheet(undefined, single, { title, rows: [rows[directions.indexOf(id)]] }, r);
+          console.log(single);
+        } else if (!selected) {
+          rmSync(single, { force: true });
         }
       }
     } finally { await r.close(); }
@@ -434,15 +455,15 @@ async function main() {
       const item = (f: typeof FORMATS[number]): SheetItem => ({ label: f.label, png: previews.get(f.id)!, width: f.width, height: f.height });
       const external = checked.exports.filter(({ kind, html }) => kind === "png" && !files.includes(html))
         .map(({ file, width, height }): SheetItem => ({ label: basename(file), png: file, width, height }));
-      const wide = ["hero", "og", "link"];
+      // The handover picture: the pieces at one height on one baseline, larger than on the comparison sheet, under the
+      // brand and the direction as the person named it (letter and name), with one quiet line naming what was
+      // delivered: the files in deliverables.json, or the kit pages when there is no list.
+      const { mark, name } = directionLabel(board.direction.id, board.direction.title);
       await writeSheet(join(dir, "kit-sheet.html"), out, {
-        title: `${briefTitle(project)}: kit from the frozen board (${board.direction.title})`,
-        swatches: board.palette.map((p) => p.hex), fonts: board.fonts.map((f) => `${f.family} ${f.weights.join("/")}`),
-        rowHeight: 400,
-        rows: [...(formats === FORMATS
-          ? [{ items: have.filter((f) => wide.includes(f.id)).map(item) }, { items: have.filter((f) => !wide.includes(f.id)).map(item) }]
-          : [{ items: have.map(item) }]), { items: external }],
-      }, undefined, renderer);
+        title: isCampaign ? `${brandName(briefTitle(project), basename(project))} — ${[mark, name].filter(Boolean).join(" · ") || board.direction.title}` : board.name,
+        line: (finalFiles?.map(({ file }) => file) ?? files).map((file) => relative(project, file).replace(/\\/g, "/")).join(" · "),
+        rows: [{ items: have.map(item) }, { items: external }],
+      }, renderer);
     } finally { await renderer.close(); }
     console.log(out);
     return;

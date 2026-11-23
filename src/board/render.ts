@@ -575,9 +575,9 @@ export class Renderer {
 }
 
 /** Screenshot a whole page (contact sheets) at a fixed width. */
-export async function screenshotFullPage(renderer: Renderer, htmlPath: string, pngPath: string, width: number, options: { verifyImages?: boolean } = {}) {
+export async function screenshotFullPage(renderer: Renderer, htmlPath: string, pngPath: string, width: number, options: { verifyImages?: boolean; viewportHeight?: number } = {}) {
   await renderer.open();
-  const ctx = await (renderer as any).browser.newContext({ viewport: { width, height: 800 }, deviceScaleFactor: 1 });
+  const ctx = await (renderer as any).browser.newContext({ viewport: { width, height: options.viewportHeight ?? 800 }, deviceScaleFactor: 1 });
   const page = await ctx.newPage();
   try {
     await page.goto(pathToFileURL(htmlPath).href, { waitUntil: "networkidle", timeout: 60_000 });

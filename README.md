@@ -162,7 +162,7 @@ npx briefatto-board status
 | `board install` | Adds Briefatto Board and its skill to a project |
 | `board adopt .` | Captures an existing site's pages and computed styles |
 | `board refs .` | Captures references and builds a sheet from entries in `refs/manifest.json` |
-| `board directions .` | Renders each direction's samples as a sheet |
+| `board directions .` | Renders the directions' samples into one comparison sheet, `directions/sheet.png` |
 | `board freeze . [direction]` | Generates source and sample values, validates the prose, and stamps the next guide version |
 | `board check . [<piece.html>]` | Checks the visual floor on supplied HTML and verifies final PNG and PDF files |
 | `board kit .` | Requires a frozen guide and checks the campaign and final exports for the kit receipt |

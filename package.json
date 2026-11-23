@@ -1,6 +1,6 @@
 {
   "name": "briefatto-board",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "The design layer for every agent: one versioned DESIGN.md read before visual work, and a quality floor that checks clipped text, fonts, contrast and AI-design tells.",
   "keywords": [
     "design-md",
