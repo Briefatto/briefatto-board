@@ -9,7 +9,6 @@
   <a href="https://www.npmjs.com/package/briefatto-board"><img src="https://img.shields.io/npm/v/briefatto-board?style=flat-square&color=2538E8&label=npm" alt="npm version"></a>
   <a href="https://github.com/Briefatto/briefatto-board/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Briefatto/briefatto-board/ci.yml?branch=main&style=flat-square&label=CI" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-Apache--2.0-151515?style=flat-square" alt="Apache-2.0 licence"></a>
-  <a href="#every-agent"><img src="https://img.shields.io/badge/built%20for-every%20agent-62625D?style=flat-square" alt="Built for every agent"></a>
 </p>
 
 Briefatto Board is the design layer for every agent. Your brand lives in one versioned `DESIGN.md` that every agent reads before it draws, and every rendered piece must pass a quality floor checked in code.
@@ -19,13 +18,22 @@ npx briefatto-board install
 ```
 
 <p align="center">
+  <a href="https://briefatto.com/guides/frontend-design-skill-vs-briefatto-board-blind-test/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset=".github/assets/proof-dark.png">
+      <img src=".github/assets/proof-light.png" width="830" alt="Pyxel, social card, same request. Briefatto Board's card beside Anthropic frontend-design's, ranked first and second. Judged blind by four AI models; 4 of 4 ranked Board first.">
+    </picture>
+  </a>
+</p>
+
+**Blind-tested.** On three open-source sites, Briefatto Board came first with 4 of 4, 4 of 4 and 3 of 4 blind AI-model judges, against Impeccable, Taste Skill, Hallmark, Anthropic's frontend-design skill and UI UX Pro Max. [Raw data](https://huggingface.co/datasets/briefatto-lab/design-kit-evals) · [DOI](https://doi.org/10.5281/zenodo.24436111) · [test 1](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/) · [test 2](https://briefatto.com/guides/frontend-design-skill-vs-briefatto-board-blind-test/) · [test 3](https://briefatto.com/guides/ui-ux-pro-max-vs-briefatto-board-blind-test/)
+
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/idea-dark.png">
     <img src=".github/assets/idea-light.png" width="830" alt="Two agent sessions on different days read the same DESIGN.md, version 2, and produce a link card and a square post in the same brand.">
   </picture>
 </p>
-
-**Blind-tested.** On three open-source sites, Briefatto Board came first with 4 of 4, 4 of 4 and 3 of 4 blind AI-model judges, against Impeccable, Taste Skill, Hallmark, Anthropic's frontend-design skill and UI UX Pro Max. [Raw data](https://huggingface.co/datasets/briefatto-lab/design-kit-evals) · [DOI](https://doi.org/10.5281/zenodo.24436111) · [test 1](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/) · [test 2](https://briefatto.com/guides/frontend-design-skill-vs-briefatto-board-blind-test/) · [test 3](https://briefatto.com/guides/ui-ux-pro-max-vs-briefatto-board-blind-test/)
 
 **Measured.** In an empty repo where the brand could travel only by file, Claude Code and Codex matched the brand's fonts in 0 of 18 pieces without a DESIGN.md and in 53 of 54 with one. [See the drift test](https://briefatto.com/guides/does-design-md-keep-your-brand-drift-test/).
 
