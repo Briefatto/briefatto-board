@@ -639,7 +639,7 @@ test("the yellow bike banner reports the v1 accent and keeps its made-under clai
   writeFileSync(join(outputs, "banner.html"), page);
   writeFileSync(join(outputs, "hero.html"), page.replace('<meta name="board-version" content="v2">', "").replace("#FFC93C", "#0e1a2b"));
 
-  const log = runBoard(project.path, "check", ".", "outputs/banner.html");
+  const log = runBoard(project.path, "check", ".", "outputs/banner.html", "--verbose");
   assert.match(log, /^PASS banner\.html: floor 0; made under v2; brief 0; note: uses #FFC93C, which is v1's accent, outside v2; checks ran: .*checks skipped: .*campaign copy \(piece has no board-campaign meta/m);
   const [banner] = JSON.parse(readFileSync(join(outputs, "check.json"), "utf8"));
   assert.equal(banner.boardVersion, "v2");
@@ -675,7 +675,7 @@ test("a frozen guide's exact colours remain valid after palette clustering", () 
   writeFileSync(draft, guide("#fdfcfb"));
   writeFileSync(join(outputs, "notice.html"), page("rgb(250, 249, 247)"));
   writeFileSync(join(outputs, "draft.html"), page("#fdfcfb"));
-  assert.match(runBoard(project.path, "check", ".", "outputs/notice.html", "outputs/draft.html"), /^PASS notice\.html:[^\n]*\nPASS draft\.html:.*uses #FDFCFB, outside v1; checks ran:/m);
+  assert.match(runBoard(project.path, "check", ".", "outputs/notice.html", "outputs/draft.html", "--verbose"), /^PASS notice\.html:[^\n]*\nPASS draft\.html:.*uses #FDFCFB, outside v1; checks ran:/m);
   const [approved, undeclared] = JSON.parse(readFileSync(join(outputs, "check.json"), "utf8"));
   assert.deepEqual(approved.outsideValues, []);
   assert.deepEqual(undeclared.outsideValues, [{ kind: "colour", value: "#FDFCFB" }]);
@@ -814,7 +814,7 @@ test("board check retains the floor, optional consistency and separate custom pr
   writeFileSync(flyerPng, "authored PNG");
   writeFileSync(join(outputs, "kit-sheet.html"), page("#fff"));
 
-  const defaults = failedBoard(project.path, "check", ".", "outputs/*.html");
+  const defaults = failedBoard(project.path, "check", ".", "outputs/*.html", "--verbose");
   assert.match(defaults, /^PASS post: floor 0; made-under version unrecorded; brief 0; note: uses #FFFFFF, outside v2.*note: uses serif, outside v2.*note: design-system-font: font-family: Georgia/m);
   assert.match(defaults, /^FAIL flyer\.html:.*text-too-small.*Below the first screen.*brief 0;.*checks ran: .*checks skipped: .*campaign copy/m);
   assert.doesNotMatch(defaults, /essential-missing|asset-missing/);
@@ -831,7 +831,7 @@ test("board check retains the floor, optional consistency and separate custom pr
   assert.match(runBoard(project.path, "status"), /outputs\/flyer.html: made-under version unrecorded/);
 
   writeFileSync(join(outputs, "hero.html"), page("#fff").replace("</body>", '<p style="font-size:10px">Tiny label</p></body>'));
-  assert.match(failedBoard(project.path, "check", "--floor-only", "outputs/hero.html"), /^FAIL hero:.*text-too-small.*Tiny label.*campaign copy \(floor-only mode has no frozen board\)/m);
+  assert.match(failedBoard(project.path, "check", "--floor-only", "outputs/hero.html", "--verbose"), /^FAIL hero:.*text-too-small.*Tiny label.*campaign copy \(floor-only mode has no frozen board\)/m);
 });
 
 test("the bakery closure needs no subscription pitch or photo unless opted into the campaign", () => {
@@ -859,7 +859,7 @@ test("the bakery closure needs no subscription pitch or photo unless opted into 
     .replace("<head><title>", "<meta content='sourdough-subscription' name='board-campaign'><title>")
     .replace("</head>", ""));
 
-  const defaults = failedBoard(project.path, "check", ".", "outputs/*.html");
+  const defaults = failedBoard(project.path, "check", ".", "outputs/*.html", "--verbose");
   assert.match(defaults, /^PASS 24-december-closure\.html: floor 0;.*brief 0;.*checks ran: .*checks skipped: .*campaign copy \(piece has no board-campaign meta/m);
   assert.match(defaults, /^FAIL post:.*essential-missing: "Start your subscription".*term-missing: "Starts 1 March".*asset-missing:.*loaf-rustic.jpg/m);
   const receipts = JSON.parse(readFileSync(join(outputs, "check.json"), "utf8"));
@@ -905,4 +905,73 @@ test("only a page colour in the current frozen board turns a cream palette into 
   assert.match(runBoard(project.path, "check", ".", file), /^PASS hero: floor 0;.*note: cream-palette: .*\(declared in frozen DESIGN\.md\)/m);
   writeFileSync(file, page("#EFE8DA"));
   assert.match(failedBoard(project.path, "check", ".", file), /^FAIL hero:.*cream-palette/m);
+});
+
+function checkProject() {
+  const project = scratch();
+  const outputs = join(project.path, "outputs");
+  mkdirSync(outputs);
+  const board = fixture(2);
+  board.fonts = [{ family: "Brand Sans", weights: [400], stack: '"Brand Sans", sans-serif' }];
+  writeBoard(join(project.path, "board"), board);
+  writeFileSync(join(project.path, "DESIGN.md"), designMd(board));
+  copyFileSync(new URL("../../resources/fonts/work-sans-latin-wght-normal.woff2", import.meta.url), join(outputs, "brand.woff2"));
+  return { project, outputs };
+}
+const runIn = (cwd: string, ...args: string[]) =>
+  execFileSync(process.execPath, [launcher, ...args], { cwd, encoding: "utf8" }).replace(/\r\n/g, "\n");
+const monoPage = (family: string) => `<!doctype html><html lang="en"><head><title>Fixture</title><style>
+  @font-face { font-family: "Brand Sans"; src: url(brand.woff2); }
+  @font-face { font-family: "Other Mono"; src: url(brand.woff2); }
+  body { margin: 0; background: #0e1a2b; color: #fff; }
+  .pb { font: 600 32px/1 ${family}, monospace; }
+</style></head><body><span class="pb">Pb</span></body></html>`;
+
+test("board check prints the result file relative to the working directory, with forward slashes", () => {
+  const { project, outputs } = checkProject();
+  using _ = project;
+  writeFileSync(join(outputs, "hero.html"), '<!doctype html><html lang="en"><head><title>Fixture</title></head><body style="margin:0;background:#0e1a2b"></body></html>');
+  const inside = runIn(project.path, "check", ".", "outputs/hero.html").trimEnd().split("\n");
+  assert.equal(inside.at(-1), "outputs/check.json");
+  const outside = runIn(join(project.path, ".."), "check", basename(project.path), join(basename(project.path), "outputs", "hero.html")).trimEnd().split("\n");
+  assert.equal(outside.at(-1), `${basename(project.path)}/outputs/check.json`);
+  const floorOnly = runIn(project.path, "check", "--floor-only", "outputs/hero.html").trimEnd().split("\n");
+  assert.equal(floorOnly.at(-1), "outputs/check.json");
+  for (const text of [...inside, ...outside, ...floorOnly]) assert.doesNotMatch(text, /[A-Za-z]:\|\|\/tmp\/|\/var\//);
+});
+
+test("board check keeps a passing run to the verdict, notes and result file; --verbose lists every check", () => {
+  const { project, outputs } = checkProject();
+  using _ = project;
+  writeFileSync(join(outputs, "hero.html"), monoPage('"Brand Sans"'));
+  const quiet = runIn(project.path, "check", ".", "outputs/hero.html");
+  assert.match(quiet, /^PASS hero: floor 0;/m);
+  assert.doesNotMatch(quiet, /checks ran:|checks skipped:|source floor|story safe zones/);
+  assert.equal(quiet.trimEnd().split("\n").length, 2);
+  const verbose = runIn(project.path, "check", ".", "outputs/hero.html", "--verbose");
+  assert.match(verbose, /^PASS hero:.*checks ran: source floor.*checks skipped: .*campaign copy/m);
+  // The receipt is the same either way.
+  const [receipt] = JSON.parse(readFileSync(join(outputs, "check.json"), "utf8"));
+  assert.ok(receipt.checks.ran.includes("source floor"));
+  assert.ok(receipt.checks.skipped.some(({ check }: { check: string }) => check === "campaign copy"));
+  assert.match(runIn(project.path, "check", "--help"), /--verbose/);
+});
+
+test("a CSS font shorthand reports its first family cleanly, and a declared family raises no note", () => {
+  const { project, outputs } = checkProject();
+  using _ = project;
+  const guide = ["---", "name: Test board", "typography:", "  body:", '    fontFamily: "Brand Sans, sans-serif"', "---", "", "## Typography", "Brand Sans.", ""].join("\n");
+  writeFileSync(join(project.path, "board", "DESIGN.md"), guide);
+  writeFileSync(join(project.path, "DESIGN.md"), guide);
+  writeBoard(join(project.path, "board"), { ...fixture(2), designHash: designHash(guide) });
+  writeFileSync(join(outputs, "hero.html"), monoPage('"Other Mono"'));
+  const undeclared = runIn(project.path, "check", ".", "outputs/hero.html");
+  assert.match(undeclared, /note: design-system-font: span "Pb" uses Other Mono; not declared in DESIGN\.md typography/);
+  assert.doesNotMatch(undeclared, /mono",|"monospace|uses mono/i);
+  const [receipt] = JSON.parse(readFileSync(join(outputs, "check.json"), "utf8"));
+  assert.ok(receipt.designNotes.every(({ detail }: { detail: string }) => !/["']/.test(detail.replace(/span "Pb"/, ""))));
+  writeFileSync(join(outputs, "hero.html"), monoPage('"Brand Sans"'));
+  assert.doesNotMatch(runIn(project.path, "check", ".", "outputs/hero.html"), /span "Pb"/);
+  writeFileSync(join(outputs, "hero.html"), monoPage("'Other Mono'"));
+  assert.match(runIn(project.path, "check", ".", "outputs/hero.html"), /span "Pb" uses Other Mono; not declared/);
 });

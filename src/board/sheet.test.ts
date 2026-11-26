@@ -123,11 +123,11 @@ test("board directions writes the one comparison sheet, and a named direction al
   };
   const root = join(project.path, "directions");
   const sheets = () => ["a", "b", "c"].filter((id) => existsSync(join(root, id, "sheet.png")));
-  assert.deepEqual(run("directions", "."), [join(root, "sheet.png")]);
+  assert.deepEqual(run("directions", "."), ["directions/sheet.png"]);
   assert.deepEqual(sheets(), []);
   const png = PNG.sync.read(readFileSync(join(root, "sheet.png")));
   assert.equal(png.width, sheetLayout({ rows: ["A", "B", "C"].map((mark) => ({ mark, items: [{ ...card, png: "" }] })) }).width);
-  assert.deepEqual(run("directions", ".", "b"), [join(root, "sheet.png"), join(root, "b", "sheet.png")]);
+  assert.deepEqual(run("directions", ".", "b"), ["directions/sheet.png", "directions/b/sheet.png"]);
   assert.deepEqual(sheets(), ["b"]);
   run("directions", ".");
   assert.deepEqual(sheets(), []);

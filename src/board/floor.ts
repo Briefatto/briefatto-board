@@ -55,7 +55,40 @@ export function impeccable(htmlPath: string): FloorFault[] {
 
 const wrapperPadding = /^<([\w-]+)>(?: "([^"]+)")?: children flush against .+ on (?:all sides|(?:top|right|bottom|left)(?:\/(?:top|right|bottom|left))*) \(no inset\)$/;
 
-export async function checkImpeccable(findings: FloorFault[], page: Page, brandFonts?: ReadonlySet<string>, brandColours?: ReadonlySet<string>): Promise<SourceFloor> {
+const systemFont = /^(\S+) "([^"]*)" uses (.+?); (not declared in DESIGN\.md typography)$/;
+
+/**
+ * Impeccable reads a CSS `font:` shorthand by splitting on spaces, so `font: 600 32px/1 "JetBrains Mono",monospace` comes back
+ * as the family `Mono",monospace`. The browser has already parsed the shorthand (style, variant, weight, size, line height,
+ * then the family list), so ask it for each element's first family. A first family the guide declares was never a finding.
+ */
+async function cleanFontFindings(findings: FloorFault[], page: Page, brandFonts?: ReadonlySet<string>): Promise<FloorFault[]> {
+  const asked = findings.flatMap(({ rule, detail }) => {
+    const match = rule === "design-system-font" ? systemFont.exec(detail) : null;
+    return match ? [{ detail, tag: match[1], text: match[2] }] : [];
+  });
+  if (!asked.length) return findings;
+  const read = new Map(await page.evaluate((asked) => asked.map(({ detail, tag, text }) => {
+    const families: string[] = [];
+    for (const element of document.getElementsByTagName(tag)) {
+      if (!(element.textContent ?? "").replace(/\s+/g, " ").trim().startsWith(text)) continue;
+      const stack = getComputedStyle(element).fontFamily;
+      const first = (/^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^,]+)/.exec(stack)?.[0] ?? stack).trim();
+      families.push(first.replace(/^["']|["']$/g, "").replace(/\\(["'\\])/g, "$1"));
+    }
+    return [detail, families] as const;
+  }), asked));
+  return findings.flatMap((finding) => {
+    const families = read.get(finding.detail);
+    const match = finding.rule === "design-system-font" ? systemFont.exec(finding.detail) : null;
+    if (!families?.length || !match) return [finding];
+    const undeclared = families.find((family) => !brandFonts?.has(family.toLowerCase()));
+    return undeclared === undefined ? [] : [{ ...finding, detail: `${match[1]} "${match[2]}" uses ${undeclared}; ${match[4]}` }];
+  });
+}
+
+export async function checkImpeccable(detected: FloorFault[], page: Page, brandFonts?: ReadonlySet<string>, brandColours?: ReadonlySet<string>): Promise<SourceFloor> {
+  const findings = await cleanFontFindings(detected, page, brandFonts);
   const wrappers = findings.flatMap(({ rule, detail }) => {
     const match = rule === "cramped-padding" ? wrapperPadding.exec(detail) : null;
     if (!match) return [];

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `board check` prints every file path relative to the folder you ran it from, with forward slashes on every OS, instead of an absolute path (also `board directions`, `refs`, `render`, `export`, `kit`, `adopt`).
+- A CSS `font:` shorthand such as `font: 600 32px/1 "JetBrains Mono", monospace` now reports its first family cleanly. A family the guide declares no longer raises a font note, and an undeclared one reads `uses JetBrains Mono`, not `uses Mono",monospace`.
+- `board check` keeps the default output to the verdict, the failures, the notes and the result file. Add `--verbose` for the full list of checks that ran and were skipped. `check.json` is unchanged.
+
+
 ## 0.1.8
 
 - The one stop is one picture: `board directions .` writes `directions/sheet.png`, the three directions side by side, each with its letter, its name, one sentence and its real pieces at one height, all three on one laptop screen.

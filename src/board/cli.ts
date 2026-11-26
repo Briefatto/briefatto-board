@@ -16,6 +16,9 @@ import { brandName, directionLabel, directionRow, writeSheet, type SheetItem, ty
 import { prepareStandingInstructions } from "./standing.js";
 import { parseVersion, readBoard, readBoardVersion, readFrozenDesign, versionLabel } from "./versions.js";
 
+/** A path as the person sees it: relative to where they ran the command, forward slashes on every OS. */
+const rel = (path: string) => relative(process.cwd(), resolve(path)).replace(/\\/g, "/") || ".";
+
 // Shells on Windows do not expand globs for native commands; expand a "*" in a file argument here.
 const expand = (a: string) => {
   if (!a.includes("*")) return [a];
@@ -45,7 +48,7 @@ const subcommands = new Map([
   ["diff", "diff <a> <b> [project]"],
   ["status", "status [project]"],
   ["export", "export astryx [project]"],
-  ["check", "check <project> [<file.html...>] [--brief] [--consistency], or briefatto-board check --floor-only <file.html...>"],
+  ["check", "check <project> [<file.html...>] [--brief] [--consistency] [--verbose], or briefatto-board check --floor-only <file.html...>"],
   ["kit", "kit [project] [--dir <delivery-dir>] [--campaign <name>]"],
 ]);
 
@@ -61,7 +64,7 @@ const briefTitle = (project: string) => {
   return existsSync(p) ? (readFileSync(p, "utf8").match(/^#\s+(.+)$/m)?.[1] ?? "Brief").trim() : "Brief";
 };
 
-function line(x: Awaited<ReturnType<typeof check>>[number], piece?: ReturnType<typeof pieceVersion>, current?: string): string {
+function line(x: Awaited<ReturnType<typeof check>>[number], piece?: ReturnType<typeof pieceVersion>, current?: string, verbose = false): string {
   const c = "consistency" in x ? x.consistency : undefined;
   const family = "family" in x ? x.family : undefined;
   const br = "brief" in x ? x.brief : [];
@@ -76,8 +79,10 @@ function line(x: Awaited<ReturnType<typeof check>>[number], piece?: ReturnType<t
     (c?.deviceMissing ? "; device missing (no data-device element)" : "") +
     (c?.resizedFrom?.length ? `; note: same thirds arrangement as ${c.resizedFrom.join(", ")} on a different shape` : "") +
     (family ? `; family ${family.name}${family.declared ? "" : " (nearest shape)"}: ${family.beside.join("; ")}` : "") +
-    `; checks ran: ${x.checks.ran.join(", ")}` +
-    (x.checks.skipped.length ? `; checks skipped: ${x.checks.skipped.map(({ check, reason }) => `${check} (${reason})`).join(", ")}` : "") +
+    (verbose
+      ? `; checks ran: ${x.checks.ran.join(", ")}` +
+        (x.checks.skipped.length ? `; checks skipped: ${x.checks.skipped.map(({ check, reason }) => `${check} (${reason})`).join(", ")}` : "")
+      : `; ${x.checks.ran.length} checks ran${x.checks.skipped.length ? `, ${x.checks.skipped.length} skipped` : ""} (--verbose lists them)`) +
     ("briefScope" in x ? `; ${x.briefScope}` : "");
 }
 
@@ -97,7 +102,7 @@ function canonicalExports(files: string[], formats: typeof FORMATS): Deliverable
 
 async function checkPieces(boardDir: string, board: Board | null, files: string[], opts: {
   out: string; formats?: typeof FORMATS; consistency?: boolean; brief?: boolean; renderer?: Renderer; requireBriefCoverage?: boolean;
-  deliverables?: Deliverable[]; generateMissing?: boolean;
+  deliverables?: Deliverable[]; generateMissing?: boolean; verbose?: boolean;
 }) {
   const sources = board ? files.map(readPiece) : [];
   const previous: Board[] = [];
@@ -111,7 +116,7 @@ async function checkPieces(boardDir: string, board: Board | null, files: string[
       if (design !== undefined) designs.set(snapshot.version, design);
     }
   }
-  const { out, deliverables, generateMissing, renderer = new Renderer(), ...options } = opts;
+  const { out, deliverables, generateMissing, verbose, renderer = new Renderer(), ...options } = opts;
   const previewDir = deliverables && files.length ? join(dirname(out), ".board-previews") : undefined;
   if (previewDir) mkdirSync(previewDir, { recursive: true });
   const project = board ? dirname(boardDir) : undefined;
@@ -145,12 +150,12 @@ async function checkPieces(boardDir: string, board: Board | null, files: string[
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(receipt, null, 2));
   if (receipt.some((x) => !x.pass)) process.exitCode = 1;
-  res.forEach((x, i) => console.log(line(x, versions[i], current ?? undefined)));
+  res.forEach((x, i) => console.log(line(x, versions[i], current ?? undefined, verbose)));
   for (const entry of exports) {
-    const file = project ? relative(project, entry.file) : entry.file;
+    const file = project ? relative(project, entry.file).replace(/\\/g, "/") : rel(entry.file);
     console.log(`${entry.pass ? "PASS" : "FAIL"} ${file}: ${entry.detail ?? `${entry.width}x${entry.height}, matches HTML`}`);
   }
-  console.log(out);
+  console.log(rel(out));
   return { layouts: res, exports };
 }
 
@@ -177,14 +182,14 @@ async function main() {
     try {
       const { output, evidence } = await adopt(project, manifest, renderer, values.check ?? false);
       for (const item of evidence) {
-        console.log(item.source + " " + item.viewport.width + "x" + item.viewport.height + " ? " + join(output, item.png));
+        console.log(item.source + " " + item.viewport.width + "x" + item.viewport.height + " ? " + rel(join(output, item.png)));
         if (item.findings) {
           console.log("  floor " + item.findings.length);
           for (const finding of item.findings) console.log("  " + finding.rule + ": " + finding.detail);
           for (const note of item.designNotes ?? []) console.log("  note: " + note.rule + ": " + note.detail);
         }
       }
-      console.log("Computed styles and project style sources: " + join(output, "evidence.json"));
+      console.log("Computed styles and project style sources: " + rel(join(output, "evidence.json")));
       console.log("Write DESIGN.md from the existing pages, then run board freeze.");
     } finally { await renderer.close(); }
     return;
@@ -194,7 +199,7 @@ async function main() {
     try {
       for (const f of args.flatMap(expand)) {
         const out = await r.render(resolve(f), formatOfFile(f, findProjectFormats(f)));
-        console.log(out.png);
+        console.log(rel(out.png));
       }
     } finally { await r.close(); }
     return;
@@ -213,14 +218,14 @@ async function main() {
           console.error(`${result.url}: ${result.error}`);
           process.exitCode = 1;
         } else {
-          console.log(result.output);
+          console.log(rel(result.output));
           for (const warning of result.warnings) console.warn(`${basename(result.output)}: ${warning}`);
         }
       }
       return;
     }
     if (args.length > 1) throw new Error("Usage: board refs [project]");
-    console.log(await writeReferenceSheet(resolve(args[0] ?? ".")));
+    console.log(rel(await writeReferenceSheet(resolve(args[0] ?? "."))));
     return;
   }
   if (cmd === "directions") {
@@ -254,12 +259,12 @@ async function main() {
       const title = brandName(briefTitle(project), basename(project));
       const sheet = join(root, "sheet.png");
       await writeSheet(undefined, sheet, { title, rows }, r);
-      console.log(sheet);
+      console.log(rel(sheet));
       for (const id of directions) {
         const single = join(root, id, "sheet.png");
         if (id === selected) {
           await writeSheet(undefined, single, { title, rows: [rows[directions.indexOf(id)]] }, r);
-          console.log(single);
+          console.log(rel(single));
         } else if (!selected) {
           rmSync(single, { force: true });
         }
@@ -308,7 +313,7 @@ async function main() {
           const bad = (await checkSamples(dir, preview, rr)).filter((x) => x.floor.length || ("brief" in x && x.brief.some((f) => f.rule !== "essential-missing" && f.rule !== "term-missing")));
           if (bad.length && !args.includes("--force")) {
             for (const x of bad) console.log(`sample ${line(x, undefined, versionLabel(preview.version))}`);
-            throw new Error(`Not frozen: fix these samples in ${dir}. Pass --force to waive the optional sample checks. Required campaign copy still applies.`);
+            throw new Error(`Not frozen: fix these samples in ${rel(dir)}. Pass --force to waive the optional sample checks. Required campaign copy still applies.`);
           }
         } else {
           const { evidence } = await adopt(project, loadAdoption(project), rr, true);
@@ -332,7 +337,7 @@ async function main() {
       console.log(`no change (board ${versionLabel(b.version)})`);
       return;
     }
-    const snapshot = { board: boardDir, version: versionLabel(b.version), note: b.note };
+    const snapshot = { board: rel(boardDir), version: versionLabel(b.version), note: b.note };
     console.log(JSON.stringify(b.designHash
       ? { ...snapshot, frozenAt: b.frozenAt, designHash: b.designHash }
       : { ...snapshot, palette: b.palette.map((p) => `${p.hex} ${p.role}`), fonts: b.fonts.map((f) => f.family), composition: b.composition }, null, 2));
@@ -380,15 +385,16 @@ async function main() {
     if (args[0] !== "astryx" || args.length > 2) throw new Error("Usage: board export astryx [project]");
     const boardDir = resolve(args[1] ?? ".", "board");
     requireFrozenBoard(boardDir, cmd);
-    console.log(exportAstryx(boardDir));
+    console.log(rel(exportAstryx(boardDir)));
     return;
   }
   if (cmd === "check") {
     const consistency = args.includes("--consistency");
     const brief = args.includes("--brief");
-    const [target, ...pieces] = args.filter((arg) => arg !== "--consistency" && arg !== "--brief");
+    const verbose = args.includes("--verbose");
+    const [target, ...pieces] = args.filter((arg) => arg !== "--consistency" && arg !== "--brief" && arg !== "--verbose");
     if (!target || ((consistency || brief) && target === "--floor-only")) {
-      throw new Error("Usage: board check <project> [<file.html...>] [--brief] [--consistency], or board check --floor-only <file.html...>");
+      throw new Error("Usage: board check <project> [<file.html...>] [--brief] [--consistency] [--verbose], or board check --floor-only <file.html...>");
     }
     const boardDir = resolve(target, "board");
     if (target !== "--floor-only") requireFrozenBoard(boardDir, cmd);
@@ -399,7 +405,7 @@ async function main() {
       .filter(consistency || !board ? (f) => isFormatFile(f, formats ?? findProjectFormats(f)) : isPieceFile);
     if (!files.length && (!deliverables || pieces.length)) throw new Error("No piece HTML files matched.");
     const out = join(files.length ? dirname(files[0]) : resolve(target, "outputs"), "check.json");
-    await checkPieces(boardDir, board, files, { consistency, formats, brief, deliverables, out });
+    await checkPieces(boardDir, board, files, { consistency, formats, brief, deliverables, out, verbose });
     return;
   }
   if (cmd === "kit") {
@@ -428,14 +434,14 @@ async function main() {
       const layouts = pieces.filter(({ reviewOnly }) => !reviewOnly);
       const receivedFormats = new Set(layouts.map(({ file }) => formatOfFile(file, formats).id));
       if (isCampaign) {
-        if (!layouts.length) throw new Error(`No kit deliverables in ${dir}. Save final pieces as <format>.html.`);
-        if (receivedFormats.size !== layouts.length) throw new Error(`More than one kit deliverable has the same format in ${dir}.`);
+        if (!layouts.length) throw new Error(`No kit deliverables in ${rel(dir)}. Save final pieces as <format>.html.`);
+        if (receivedFormats.size !== layouts.length) throw new Error(`More than one kit deliverable has the same format in ${rel(dir)}.`);
         const campaign = values.campaign?.trim() ?? layouts.find((piece) => piece.campaign)?.campaign ??
           (board.name === "Brief" ? `${basename(project)} launch` : board.name);
         if (!campaign || /[\r\n]/.test(campaign)) throw new Error("Give the campaign a non-empty name on one line.");
         for (const piece of layouts) {
           if (piece.campaign && piece.campaign !== campaign) {
-            throw new Error(`${piece.file} declares campaign ${JSON.stringify(piece.campaign)}; expected ${JSON.stringify(campaign)}.`);
+            throw new Error(`${rel(piece.file)} declares campaign ${JSON.stringify(piece.campaign)}; expected ${JSON.stringify(campaign)}.`);
           }
         }
         for (const { file } of layouts) declareCampaign(file, campaign);
@@ -443,7 +449,7 @@ async function main() {
         throw new Error("Add brief.md before checking a campaign kit.");
       }
       const files = layouts.map(({ file }) => file);
-      if (!files.length && !finalFiles) throw new Error(`No kit deliverables in ${dir}. Save final pieces as <format>.html or list exports in deliverables.json.`);
+      if (!files.length && !finalFiles) throw new Error(`No kit deliverables in ${rel(dir)}. Save final pieces as <format>.html or list exports in deliverables.json.`);
       const entries = finalFiles ?? canonicalExports(files, formats);
       const checked = await checkPieces(boardDir, board, files, {
         formats, renderer, requireBriefCoverage: isCampaign, out: join(dir, "kit-check.json"),
@@ -465,7 +471,7 @@ async function main() {
         rows: [{ items: have.map(item) }, { items: external }],
       }, renderer);
     } finally { await renderer.close(); }
-    console.log(out);
+    console.log(rel(out));
     return;
   }
   const usage = `Usage: briefatto-board <${[...subcommands.keys()].join("|")}>`;
