@@ -86,7 +86,7 @@ Versions live in files because Git is already the collaboration layer. A brand c
 
 Status reads a declaration because redrawing is a decision. A piece states its version, the board reports, the agent redraws, and the floor checks the result before it counts as current.
 
-In three blind tests on real open-source sites, the judges ranked the Briefatto Board kit first every time: on Issue Composer ahead of Impeccable, Taste Skill and Hallmark ([see every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/)), on Pyxel ahead of Anthropic's frontend-design skill ([blind test 2](https://briefatto.com/guides/frontend-design-skill-vs-briefatto-board-blind-test/)), and on PocketBase above UI UX Pro Max ([blind test 3](https://briefatto.com/guides/ui-ux-pro-max-vs-briefatto-board-blind-test/)).
+In three blind tests on real open-source sites, the Briefatto Board kit came first with 4 of 4, 4 of 4 and 3 of 4 blind AI-model judges: on Issue Composer ahead of Impeccable, Taste Skill and Hallmark ([see every kit side by side](https://briefatto.com/guides/impeccable-vs-taste-skill-vs-hallmark-blind-test/)), on Pyxel ahead of Anthropic's frontend-design skill ([blind test 2](https://briefatto.com/guides/frontend-design-skill-vs-briefatto-board-blind-test/)), and on PocketBase above UI UX Pro Max ([blind test 3](https://briefatto.com/guides/ui-ux-pro-max-vs-briefatto-board-blind-test/)).
 
 ## Questions and answers
 
@@ -113,6 +113,23 @@ The freeze fails. The report gives the line, the claimed value and the nearest v
 ### Which agents does Briefatto Board work with?
 
 Every agent. The guide is a plain file in the project, the protocol is a plain skill file, and the work is done by a CLI any agent can call. Every agent reads the same frozen guide and runs the same checks.
+
+## Export checks
+
+Export the finished files and list every delivery PNG and PDF in project-root `deliverables.json`. Each entry names the actual file, its editable HTML source, and the exact comparison size in pixels. Use project-relative paths.
+
+```json
+[
+  {"file":"delivery/card.png","html":"outputs/post.html","width":1080,"height":1080},
+  {"file":"delivery/poster.pdf","html":"outputs/poster.html","width":1212,"height":1704,"pageSizeMm":{"width":303,"height":426}}
+]
+```
+
+- Add `"transparent":true` for a transparent PNG. Use `viewport` with `width` and `height` when the HTML lays out at a different CSS size. Board scales the capture by the export width divided by the viewport width. Add `"fullPage":true` for a PNG of the full scroll height.
+- PDF entries describe one page. Board rasterizes the page with PDF.js and compares it with the HTML in print media. The page aspect must fit within one comparison pixel on either axis. Optional `pageSizeMm` checks the visible page box to within 0.1 mm on each axis. Use the full page size including bleed when the visible page includes it.
+- PNGs match their HTML pixel for pixel; PDFs match within a [rasterizer tolerance](#export-tolerance).
+
+Run `board check .` to validate the listed files, or pass HTML filenames to run layout checks too. `board kit .` requires a frozen guide and includes the layout checks and final-file results in `outputs/kit-check.json`. Each export row records the SHA-256 of the checked bytes. Use independently renderable HTML as the source for each export. With no manifest, `board check` renders HTML previews. `board kit` checks the format-named PNGs alongside their HTML and creates one only if it is missing. Use `board render <file.html>` to regenerate these PNGs after editing the HTML.
 
 ## Export tolerance
 A PNG must match every decoded RGBA pixel. Board ignores RGB values under fully transparent pixels. Lossless encoding of the same Chromium capture preserves these pixels exactly. PDFs allow a mean maximum-channel difference of 2 on a 0–255 scale and at most 2% of pixels differing by more than 32. In each 64 × 64 pixel tile, Board also compares pixels in both directions within one pixel of their position to account for rasterizer edge placement. The mean after this allowance must be at most 5. The A3 export measured 0.40 overall, 0.53% above 32, and 2.44 in the worst tile. A smaller type-and-vector PDF also passes. Removing a short date line stayed within the overall limits and exceeded the tile limit. The PDF regressions cover both scenarios.
