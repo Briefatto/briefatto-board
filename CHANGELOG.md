@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.9
 
 - `board check` prints every file path relative to the folder you ran it from, with forward slashes on every OS, instead of an absolute path (also `board directions`, `refs`, `render`, `export`, `kit`, `adopt`).
 - A CSS `font:` shorthand such as `font: 600 32px/1 "JetBrains Mono", monospace` now reports its first family cleanly. A family the guide declares no longer raises a font note, and an undeclared one reads `uses JetBrains Mono`, not `uses Mono",monospace`.
